@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+docxtpl
+python-multipart
+pydantic
+pydantic-settings
+docx2pdf

@@ -1,0 +1,70 @@
+export interface Customer {
+  id: number;
+  name: string;
+  firma?: string;
+  adresse: string;
+  plz: string;
+  ort: string;
+  email?: string;
+  telefon?: string;
+  created_at: string;
+}
+
+export interface InvoiceItem {
+  id?: number;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total_price?: number;
+}
+
+export interface Invoice {
+  id: number;
+  customer_id: number;
+  invoice_number: string;
+  date: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  customer: Customer;
+  items: InvoiceItem[];
+}
+
+export interface OfferItem {
+  id?: number;
+  description: string;
+  quantity: number;
+  unit_price: number;
+  total_price?: number;
+}
+
+export interface Offer {
+  id: number;
+  customer_id: number;
+  offer_number: string;
+  date: string;
+  total_amount: number;
+  status: string;
+  created_at: string;
+  customer: Customer;
+  items: OfferItem[];
+}
+
+export interface Letter {
+  id: number;
+  customer_id: number;
+  subject: string;
+  content: string;
+  date: string;
+  created_at: string;
+  customer: Customer;
+}
+
+export interface Article {
+  id: number;
+  name: string;
+  description?: string;
+  default_quantity: number;
+  default_price: number;
+  created_at: string;
+}
