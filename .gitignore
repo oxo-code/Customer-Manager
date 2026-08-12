@@ -22,3 +22,7 @@ coverage/
 .DS_Store
 Thumbs.db
 .vscode/settings.json
+
+# Template backups
+templates/docx/*.bak
+~$*.docx
