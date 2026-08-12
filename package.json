@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "predev": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/free-ports.ps1 5173 8001",
-    "dev": "concurrently -k \"python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001\" \"vite --host 127.0.0.1 --port 5173\"",
+    "dev": "concurrently -k \"python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001 --reload\" \"vite --host 127.0.0.1 --port 5173\"",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "preprod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/free-ports.ps1 4173 8001",

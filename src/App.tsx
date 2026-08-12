@@ -28,6 +28,7 @@ const App: React.FC = () => {
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -66,6 +67,10 @@ const App: React.FC = () => {
     }).catch(() => undefined);
   }, [isAuthenticated, location.pathname]);
 
+  useEffect(() => {
+    setIsMobileNavOpen(false);
+  }, [location.pathname]);
+
   if (!authReady) {
     return (
       <main className="page-shell">
@@ -94,6 +99,7 @@ const App: React.FC = () => {
     }
     clearAuthToken();
     setCurrentUser(null);
+    setIsMobileNavOpen(false);
     setIsAuthenticated(false);
   };
 
@@ -104,7 +110,19 @@ const App: React.FC = () => {
           <Link to="/" className="logo">
             {(isLightMode ? logoPath : darkLogoPath || logoPath) ? <img src={isLightMode ? logoPath : darkLogoPath || logoPath} alt={companyName} className="logo-image" /> : <span className="logo-name">{companyName}</span>}
           </Link>
-          <nav className="main-nav">
+          <button
+            type="button"
+            className={`nav-toggle${isMobileNavOpen ? ' is-open' : ''}`}
+            aria-expanded={isMobileNavOpen}
+            aria-controls="main-navigation"
+            aria-label={isMobileNavOpen ? t('Close navigation', 'Navigation schließen') : t('Open navigation', 'Navigation öffnen')}
+            onClick={() => setIsMobileNavOpen((open) => !open)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          <nav id="main-navigation" className={`main-nav${isMobileNavOpen ? ' is-open' : ''}`}>
             <NavLink to="/customers" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
               {t('Customers', 'Kunden')}
             </NavLink>
