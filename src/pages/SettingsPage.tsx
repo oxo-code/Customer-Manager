@@ -1,20 +1,36 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../i18n';
-import { getCompanySettings, updateCompanySettings, uploadCompanyDarkLogo, uploadCompanyLogo, uploadDocumentLogo } from '../services/api';
-import { CompanySettings } from '../types/api';
+import { createManagedUser, deleteManagedUser, getCompanySettings, getManagedUsers, updateCompanySettings, updateManagedUserRole, uploadCompanyDarkLogo, uploadCompanyLogo, uploadDocumentLogo } from '../services/api';
+import { AuthUser, CompanySettings } from '../types/api';
 
 const emptySettings: Omit<CompanySettings, 'id' | 'logo_path' | 'dark_logo_path' | 'document_logo_path'> = {
   company_name: '', full_name: '', street: '', postal_code: '', city: '', country: '', email: '', phone: '',
   tax_number: '', vat_id: '', bank_name: '', iban: '', bic: '',
 };
 
-const SettingsPage: React.FC = () => {
+const emptyNewUser = {
+  username: '',
+  password: '',
+  role: 'user' as 'admin' | 'user',
+};
+
+interface SettingsPageProps {
+  currentUser: AuthUser | null;
+}
+
+const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   const [settings, setSettings] = useState(emptySettings);
   const [logoPath, setLogoPath] = useState<string>();
   const [darkLogoPath, setDarkLogoPath] = useState<string>();
   const [documentLogoPath, setDocumentLogoPath] = useState<string>();
   const [status, setStatus] = useState('');
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [userStatus, setUserStatus] = useState('');
+  const [userLoading, setUserLoading] = useState(false);
+  const [newUser, setNewUser] = useState(emptyNewUser);
   const { t } = useLanguage();
+
+  const isAdmin = currentUser?.role === 'admin';
 
   useEffect(() => {
     getCompanySettings().then(({ data }) => {
@@ -26,8 +42,32 @@ const SettingsPage: React.FC = () => {
     }).catch(() => setStatus(t('Settings could not be loaded.', 'Einstellungen konnten nicht geladen werden.')));
   }, [t]);
 
+  useEffect(() => {
+    if (!isAdmin) {
+      setUsers([]);
+      return;
+    }
+
+    setUserLoading(true);
+    getManagedUsers()
+      .then(({ data }) => {
+        setUsers(data);
+      })
+      .catch((error) => {
+        const backendMessage = error?.response?.data?.detail;
+        setUserStatus(backendMessage || t('Users could not be loaded.', 'Benutzer konnten nicht geladen werden.'));
+      })
+      .finally(() => {
+        setUserLoading(false);
+      });
+  }, [isAdmin, t]);
+
   const change = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSettings({ ...settings, [event.target.name]: event.target.value });
+  };
+
+  const changeNewUser = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    setNewUser({ ...newUser, [event.target.name]: event.target.value });
   };
 
   const selectDarkLogo = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -76,6 +116,60 @@ const SettingsPage: React.FC = () => {
     }
   };
 
+  const createUser = async () => {
+    setUserStatus('');
+
+    try {
+      if (!newUser.username.trim()) {
+        throw new Error(t('Please enter a username.', 'Bitte Benutzername eingeben.'));
+      }
+
+      if (newUser.password.length < 8) {
+        throw new Error(t('Password must have at least 8 characters.', 'Das Passwort muss mindestens 8 Zeichen haben.'));
+      }
+
+      const { data } = await createManagedUser({
+        username: newUser.username.trim(),
+        password: newUser.password,
+        role: newUser.role,
+      });
+      setUsers((currentUsers) => [...currentUsers, data].sort((leftUser, rightUser) => leftUser.username.localeCompare(rightUser.username)));
+      setNewUser(emptyNewUser);
+      setUserStatus(t('User created.', 'Benutzer erstellt.'));
+    } catch (error: any) {
+      const backendMessage = error?.response?.data?.detail;
+      setUserStatus(backendMessage || error?.message || t('The user could not be created.', 'Der Benutzer konnte nicht erstellt werden.'));
+    }
+  };
+
+  const changeUserRole = async (userId: number, role: 'admin' | 'user') => {
+    setUserStatus('');
+    try {
+      const { data } = await updateManagedUserRole(userId, { role });
+      setUsers((currentUsers) => currentUsers.map((user) => (user.id === userId ? data : user)));
+      setUserStatus(t('Permissions updated.', 'Rechte aktualisiert.'));
+    } catch (error: any) {
+      const backendMessage = error?.response?.data?.detail;
+      setUserStatus(backendMessage || t('Permissions could not be updated.', 'Rechte konnten nicht aktualisiert werden.'));
+    }
+  };
+
+  const removeUser = async (user: AuthUser) => {
+    if (!window.confirm(t(`Delete user ${user.username}?`, `Benutzer ${user.username} löschen?`))) {
+      return;
+    }
+
+    setUserStatus('');
+    try {
+      await deleteManagedUser(user.id);
+      setUsers((currentUsers) => currentUsers.filter((entry) => entry.id !== user.id));
+      setUserStatus(t('User deleted.', 'Benutzer gelöscht.'));
+    } catch (error: any) {
+      const backendMessage = error?.response?.data?.detail;
+      setUserStatus(backendMessage || t('The user could not be deleted.', 'Der Benutzer konnte nicht gelöscht werden.'));
+    }
+  };
+
   return <main className="page-shell">
     <div className="page-header"><div><p className="eyebrow">{t('Settings', 'Einstellungen')}</p><h1 className="page-title">{t('Company details', 'Unternehmensdaten')}</h1><p className="page-copy">{t('These details are used centrally for management and document templates.', 'Diese Angaben stehen zentral für deine Verwaltung und Dokumentvorlagen bereit.')}</p></div></div>
     <form className="settings-form" onSubmit={save}>
@@ -107,7 +201,72 @@ const SettingsPage: React.FC = () => {
         <div className="form-field"><label>{t('Tax number', 'Steuernummer')}</label><input name="tax_number" value={settings.tax_number || ''} onChange={change} /></div><div className="form-field"><label>{t('VAT ID', 'USt-IdNr.')}</label><input name="vat_id" value={settings.vat_id || ''} onChange={change} /></div>
         <div className="form-field"><label>{t('Bank', 'Bank')}</label><input name="bank_name" value={settings.bank_name || ''} onChange={change} /></div><div className="form-field"><label>IBAN</label><input name="iban" value={settings.iban || ''} onChange={change} /></div><div className="form-field"><label>BIC</label><input name="bic" value={settings.bic || ''} onChange={change} /></div>
       </div></section>
+      <section className="card settings-section">
+        <div className="settings-section-head">
+          <div>
+            <h2>{t('User management', 'Benutzerverwaltung')}</h2>
+            <p className="page-copy settings-section-copy">{t('Create additional admins or users and control their permissions.', 'Lege weitere Admins oder Benutzer an und steuere ihre Rechte.')}</p>
+          </div>
+          {currentUser && <span className={`role-pill role-pill--${currentUser.role}`}>{currentUser.role === 'admin' ? t('Admin', 'Admin') : t('User', 'Benutzer')}</span>}
+        </div>
+
+        {isAdmin ? (
+          <>
+            <div className="form-grid">
+              <div className="form-field"><label>{t('Username', 'Benutzername')}</label><input name="username" value={newUser.username} onChange={changeNewUser} autoComplete="off" required /></div>
+              <div className="form-field"><label>{t('Temporary password', 'Temporäres Passwort')}</label><input type="password" name="password" value={newUser.password} onChange={changeNewUser} autoComplete="new-password" required /></div>
+              <div className="form-field"><label>{t('Role', 'Rolle')}</label><select name="role" value={newUser.role} onChange={changeNewUser}><option value="user">{t('User', 'Benutzer')}</option><option value="admin">{t('Admin', 'Admin')}</option></select></div>
+              <div className="full-width action-row"><button className="btn btn-primary" type="button" onClick={createUser}>{t('Create user', 'Benutzer erstellen')}</button></div>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>{t('Username', 'Benutzername')}</th>
+                    <th>{t('Role', 'Rolle')}</th>
+                    <th>{t('Permissions', 'Rechte')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => {
+                    const isCurrentUser = currentUser?.id === user.id;
+                    return (
+                      <tr key={user.id}>
+                        <td>
+                          <div className="user-cell">
+                            <span>{user.username}</span>
+                            {isCurrentUser && <span className="user-meta">{t('You', 'Du')}</span>}
+                          </div>
+                        </td>
+                        <td><span className={`role-pill role-pill--${user.role}`}>{user.role === 'admin' ? t('Admin', 'Admin') : t('User', 'Benutzer')}</span></td>
+                        <td>
+                          <div className="button-group user-actions">
+                            <select value={user.role} onChange={(event) => changeUserRole(user.id, event.target.value as 'admin' | 'user')} aria-label={t(`Role for ${user.username}`, `Rolle für ${user.username}`)}>
+                              <option value="user">{t('User', 'Benutzer')}</option>
+                              <option value="admin">{t('Admin', 'Admin')}</option>
+                            </select>
+                            <button type="button" className="btn btn-secondary btn-small" onClick={() => removeUser(user)} disabled={isCurrentUser}>{t('Delete', 'Löschen')}</button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {!userLoading && users.length === 0 && (
+                    <tr>
+                      <td colSpan={3}>{t('No additional users yet.', 'Noch keine weiteren Benutzer vorhanden.')}</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        ) : (
+          <p className="form-status" role="status">{t('Only admins can create users or change permissions.', 'Nur Admins können Benutzer anlegen oder Rechte ändern.')}</p>
+        )}
+      </section>
       <div className="action-row"><button className="btn btn-primary" type="submit">{t('Save settings', 'Einstellungen speichern')}</button>{status && <p className="form-status" role="status">{status}</p>}</div>
+      {userStatus && <p className="form-status" role="status">{userStatus}</p>}
     </form>
   </main>;
 };

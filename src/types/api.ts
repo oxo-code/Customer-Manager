@@ -99,6 +99,16 @@ export interface AuthUser {
   role: 'admin' | 'user';
 }
 
+export interface AuthCreateUserRequest {
+  username: string;
+  password: string;
+  role: 'admin' | 'user';
+}
+
+export interface AuthUpdateUserRoleRequest {
+  role: 'admin' | 'user';
+}
+
 export interface AuthTokenResponse {
   access_token: string;
   refresh_token: string;

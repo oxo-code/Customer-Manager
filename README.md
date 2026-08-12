@@ -9,7 +9,8 @@ A web application for managing customers and generating invoices.
 1. Install Python 3.8+ from https://python.org
 2. Install dependencies: `pip install -r backend/requirements.txt`
 3. For PDF generation, install Microsoft Word (docx2pdf uses Word on Windows).
-4. Run the backend: `python -m uvicorn backend.main:app --reload`
+4. Optional: set `AUTH_SECRET_KEY` and `CUSTOMER_MANAGER_DB_PATH` if you want custom local paths.
+5. Run the backend: `python -m uvicorn backend.main:app --reload`
 
 ### Frontend
 
@@ -28,8 +29,16 @@ A web application for managing customers and generating invoices.
 
 - On first app start, create the initial admin account in the login screen.
 - Session uses access + refresh tokens.
+- If `AUTH_SECRET_KEY` is not set, the backend creates a local secret file in `backend/.local/` that is gitignored.
+- The local SQLite database now lives in `backend/.local/` by default and is gitignored.
 - Reset a password locally with one command:
 	- `npm run reset-password -- --username <username> --password <new-password>`
+
+## Git Safety
+
+- The repository ignores local databases, uploads, and generated auth secrets.
+- A local pre-commit hook in `.githooks/pre-commit` blocks staging `.env` files and local runtime data.
+- Activate it once on your machine with: `git config core.hooksPath .githooks`
 
 ## Features
 

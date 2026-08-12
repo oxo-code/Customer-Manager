@@ -190,3 +190,7 @@ class AuthCreateUser(BaseModel):
 
 class AuthRefreshRequest(BaseModel):
     refresh_token: str
+
+
+class AuthUpdateUserRole(BaseModel):
+    role: str

@@ -15,6 +15,15 @@ dist-ssr/
 .env.local
 .env.*.local
 
+# Local runtime data and secrets
+backend/.local/
+backend/customer_manager.db
+customer_manager.db
+*.db-shm
+*.db-wal
+backend/uploads/
+backend/__pycache__/
+
 # Test-Coverage (Vitest)
 coverage/
 

@@ -9,6 +9,7 @@ import os
 import shutil
 import threading
 import hashlib
+import secrets
 from uuid import uuid4
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
@@ -17,7 +18,7 @@ from datetime import datetime, timedelta, timezone
 from jose import jwt, JWTError
 from passlib.context import CryptContext
 from . import crud, models, schemas
-from .database import SessionLocal, engine
+from .database import RUNTIME_DIR, SessionLocal, engine
 from .models import Customer, Invoice, InvoiceItem, Counter
 
 models.Base.metadata.create_all(bind=engine)
@@ -42,7 +43,29 @@ with engine.begin() as connection:
 
 app = FastAPI(title="Customer Manager API")
 PDF_CONVERSION_LOCK = threading.Lock()
-SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "change-this-in-production")
+
+
+def load_secret_key() -> str:
+    env_secret = os.getenv("AUTH_SECRET_KEY")
+    if env_secret:
+        return env_secret
+
+    secret_file = os.path.join(RUNTIME_DIR, "auth_secret.txt")
+    os.makedirs(os.path.dirname(secret_file), exist_ok=True)
+
+    if os.path.exists(secret_file):
+        with open(secret_file, "r", encoding="utf-8") as file_handle:
+            stored_secret = file_handle.read().strip()
+            if stored_secret:
+                return stored_secret
+
+    generated_secret = secrets.token_urlsafe(64)
+    with open(secret_file, "w", encoding="utf-8") as file_handle:
+        file_handle.write(generated_secret)
+    return generated_secret
+
+
+SECRET_KEY = load_secret_key()
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 20
 REFRESH_TOKEN_EXPIRE_DAYS = 14
@@ -174,6 +197,17 @@ def get_user_from_refresh_token(token: str, db: Session):
 def require_admin(request: Request):
     if getattr(request.state, "user_role", "") != "admin":
         raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+
+def normalize_user_role(role: str) -> str:
+    normalized_role = role.strip().lower()
+    if normalized_role not in {"admin", "user"}:
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'.")
+    return normalized_role
+
+
+def count_admin_users(db: Session) -> int:
+    return db.query(models.User).filter(models.User.role == "admin").count()
 
 
 @app.middleware("http")
@@ -586,9 +620,7 @@ def logout(payload: schemas.AuthRefreshRequest, request: Request, db: Session = 
 def create_user(payload: schemas.AuthCreateUser, request: Request, db: Session = Depends(get_db)):
     require_admin(request)
 
-    role = payload.role.strip().lower()
-    if role not in {"admin", "user"}:
-        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'.")
+    role = normalize_user_role(payload.role)
 
     username = payload.username.strip()
     if len(username) < 3 or len(payload.password) < 8:
@@ -603,6 +635,52 @@ def create_user(payload: schemas.AuthCreateUser, request: Request, db: Session =
     db.commit()
     db.refresh(user)
     return schemas.AuthUser.model_validate(user)
+
+
+@app.get("/api/auth/users", response_model=list[schemas.AuthUser])
+def list_users(request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+    users = db.query(models.User).order_by(models.User.username.asc()).all()
+    return [schemas.AuthUser.model_validate(user) for user in users]
+
+
+@app.patch("/api/auth/users/{user_id}", response_model=schemas.AuthUser)
+def update_user_role(user_id: int, payload: schemas.AuthUpdateUserRole, request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    new_role = normalize_user_role(payload.role)
+    if user.role == "admin" and new_role != "admin" and count_admin_users(db) <= 1:
+        raise HTTPException(status_code=400, detail="At least one admin must remain.")
+
+    user.role = new_role
+    db.commit()
+    db.refresh(user)
+    return schemas.AuthUser.model_validate(user)
+
+
+@app.delete("/api/auth/users/{user_id}")
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+
+    current_user_id = getattr(request.state, "user_id", None)
+    if current_user_id == user_id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account.")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if user.role == "admin" and count_admin_users(db) <= 1:
+        raise HTTPException(status_code=400, detail="At least one admin must remain.")
+
+    db.query(models.RefreshToken).filter(models.RefreshToken.user_id == user.id).delete()
+    db.delete(user)
+    db.commit()
+    return {"message": "User deleted"}
 
 
 @app.get("/api/auth/me", response_model=schemas.AuthUser)

@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { useLanguage } from '../i18n';
 import { getAuthBootstrap, loginUser, registerFirstUser, setAuthToken, setRefreshToken } from '../services/api';
+import { AuthUser } from '../types/api';
 
 interface AuthPageProps {
-  onAuthenticated: () => void;
+  onAuthenticated: (user: AuthUser) => void;
 }
 
 const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated }) => {
@@ -50,7 +51,7 @@ const AuthPage: React.FC<AuthPageProps> = ({ onAuthenticated }) => {
       const { data } = await request;
       setAuthToken(data.access_token);
       setRefreshToken(data.refresh_token);
-      onAuthenticated();
+      onAuthenticated(data.user);
     } catch (err: any) {
       const backendMessage = err?.response?.data?.detail;
       setError(backendMessage || err?.message || t('Authentication failed.', 'Authentifizierung fehlgeschlagen.'));

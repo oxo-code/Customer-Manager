@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Article, AuthBootstrap, AuthTokenResponse, AuthUser, CompanySettings, Customer, Invoice, InvoiceItem, Letter, Offer, OfferItem } from '../types/api';
+import { Article, AuthBootstrap, AuthCreateUserRequest, AuthTokenResponse, AuthUpdateUserRoleRequest, AuthUser, CompanySettings, Customer, Invoice, InvoiceItem, Letter, Offer, OfferItem } from '../types/api';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
 const api = axios.create({
@@ -85,6 +85,10 @@ export const loginUser = (data: { username: string; password: string }) => api.p
 export const refreshAuth = (refreshToken: string) => api.post<AuthTokenResponse>('/auth/refresh', { refresh_token: refreshToken });
 export const logoutUser = (refreshToken: string) => api.post('/auth/logout', { refresh_token: refreshToken });
 export const getCurrentUser = () => api.get<AuthUser>('/auth/me');
+export const getManagedUsers = () => api.get<AuthUser[]>('/auth/users');
+export const createManagedUser = (data: AuthCreateUserRequest) => api.post<AuthUser>('/auth/users', data);
+export const updateManagedUserRole = (userId: number, data: AuthUpdateUserRoleRequest) => api.patch<AuthUser>(`/auth/users/${userId}`, data);
+export const deleteManagedUser = (userId: number) => api.delete(`/auth/users/${userId}`);
 
 export const getCustomers = () => api.get<Customer[]>('/customers');
 export const getCustomer = (id: number) => api.get<Customer>(`/customers/${id}`);

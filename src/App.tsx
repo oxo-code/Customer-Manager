@@ -15,6 +15,7 @@ import SettingsPage from './pages/SettingsPage';
 import AuthPage from './pages/AuthPage';
 import { clearAuthToken, getAuthToken, getCompanySettings, getCurrentUser, getRefreshToken, logoutUser } from './services/api';
 import { useLanguage } from './i18n';
+import { AuthUser } from './types/api';
 
 const App: React.FC = () => {
   const location = useLocation();
@@ -26,6 +27,7 @@ const App: React.FC = () => {
   const [isLightMode, setIsLightMode] = useState(() => localStorage.getItem('theme') === 'light');
   const [authReady, setAuthReady] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
 
   useEffect(() => {
     const token = getAuthToken();
@@ -35,11 +37,13 @@ const App: React.FC = () => {
     }
 
     getCurrentUser()
-      .then(() => {
+      .then(({ data }) => {
+        setCurrentUser(data);
         setIsAuthenticated(true);
       })
       .catch(() => {
         clearAuthToken();
+        setCurrentUser(null);
         setIsAuthenticated(false);
       })
       .finally(() => {
@@ -73,7 +77,10 @@ const App: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <AuthPage onAuthenticated={() => setIsAuthenticated(true)} />;
+    return <AuthPage onAuthenticated={(user) => {
+      setCurrentUser(user);
+      setIsAuthenticated(true);
+    }} />;
   }
 
   const logout = async () => {
@@ -86,6 +93,7 @@ const App: React.FC = () => {
       }
     }
     clearAuthToken();
+    setCurrentUser(null);
     setIsAuthenticated(false);
   };
 
@@ -159,7 +167,7 @@ const App: React.FC = () => {
         <Route path="/articles" element={<ArticleList />} />
         <Route path="/articles/new" element={<ArticleForm />} />
         <Route path="/articles/:id/edit" element={<ArticleForm />} />
-        <Route path="/settings" element={<SettingsPage />} />
+        <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
       </Routes>
 
       <footer className="site-footer">
