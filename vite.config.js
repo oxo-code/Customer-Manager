@@ -9,7 +9,14 @@ export default defineConfig({
     host: '127.0.0.1',
     port: 5173,
     watch: {
-      ignored: ['**/output/**', '**/mso*.tmp'],
+      ignored: [
+        '**/output/**',
+        '**/mso*.tmp',
+        '**/~$*',
+        '**/public/customer-manager-logo.jpg',
+        '**/public/customer-manager-logo.svg',
+        '**/public/customer-manager-logo-weiß.svg',
+      ],
     },
     proxy: {
       '/api': {

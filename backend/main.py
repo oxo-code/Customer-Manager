@@ -21,6 +21,11 @@ from . import crud, models, schemas
 from .database import RUNTIME_DIR, SessionLocal, engine
 from .models import Customer, Invoice, InvoiceItem, Counter
 
+PUBLIC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "public"))
+DEFAULT_LOGO_WEB_PATH = "/customer-manager-logo.svg"
+DEFAULT_DARK_LOGO_WEB_PATH = "/customer-manager-logo-weiß.svg"
+DEFAULT_DOCUMENT_LOGO_WEB_PATH = "/customer-manager-logo.jpg"
+
 models.Base.metadata.create_all(bind=engine)
 
 with engine.begin() as connection:
@@ -258,6 +263,27 @@ def get_output_dir():
     return output_dir
 
 
+def with_default_company_logos(settings: schemas.CompanySettings):
+    default_logo = settings.logo_path or DEFAULT_LOGO_WEB_PATH
+    default_dark_logo = settings.dark_logo_path or DEFAULT_DARK_LOGO_WEB_PATH
+    default_document_logo = settings.document_logo_path or DEFAULT_DOCUMENT_LOGO_WEB_PATH
+    return settings.model_copy(
+        update={
+            "logo_path": default_logo,
+            "dark_logo_path": default_dark_logo,
+            "document_logo_path": default_document_logo,
+        }
+    )
+
+
+def serialize_company_settings(settings):
+    if settings:
+        response = schemas.CompanySettings.model_validate(settings)
+    else:
+        response = schemas.CompanySettings(id=0, company_name="Customer Manager")
+    return with_default_company_logos(response)
+
+
 def build_company_template_context(settings):
     if settings is None:
         return {
@@ -272,8 +298,10 @@ def build_company_template_context(settings):
             "bank": "",
             "iban": "",
             "bic": "",
-            "logo": "",
+            "logo": DEFAULT_DOCUMENT_LOGO_WEB_PATH,
         }
+
+    logo_value = settings.document_logo_path or settings.logo_path or settings.dark_logo_path or DEFAULT_DOCUMENT_LOGO_WEB_PATH
 
     return {
         "name": settings.company_name or "Customer Manager",
@@ -287,13 +315,17 @@ def build_company_template_context(settings):
         "bank": settings.bank_name or "",
         "iban": settings.iban or "",
         "bic": settings.bic or "",
-        "logo": settings.document_logo_path or settings.logo_path or settings.dark_logo_path or "",
+        "logo": logo_value,
     }
 
 
 def resolve_logo_file_path(logo_value: str):
     if not logo_value:
         return None
+
+    if logo_value.startswith("/") and not logo_value.startswith("/api/"):
+        candidate = os.path.join(PUBLIC_DIR, os.path.basename(logo_value))
+        return candidate if os.path.exists(candidate) else None
 
     if logo_value.startswith("/api/uploads/"):
         file_name = os.path.basename(logo_value)
@@ -698,13 +730,11 @@ def auth_me(request: Request, db: Session = Depends(get_db)):
 @app.get("/api/settings", response_model=schemas.CompanySettings)
 def read_company_settings(db: Session = Depends(get_db)):
     settings = crud.get_company_settings(db)
-    if settings:
-        return settings
-    return schemas.CompanySettings(id=0, company_name="Customer Manager")
+    return serialize_company_settings(settings)
 
 @app.put("/api/settings", response_model=schemas.CompanySettings)
 def save_company_settings(settings: schemas.CompanySettingsUpdate, db: Session = Depends(get_db)):
-    return crud.update_company_settings(db, settings)
+    return serialize_company_settings(crud.update_company_settings(db, settings))
 
 async def save_logo(file: UploadFile, field_name: str, db: Session):
     extension = os.path.splitext(file.filename or "")[1].lower()
@@ -729,15 +759,15 @@ async def save_logo(file: UploadFile, field_name: str, db: Session):
 
 @app.post("/api/settings/logo", response_model=schemas.CompanySettings)
 async def upload_company_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    return await save_logo(file, "logo_path", db)
+    return serialize_company_settings(await save_logo(file, "logo_path", db))
 
 @app.post("/api/settings/dark-logo", response_model=schemas.CompanySettings)
 async def upload_company_dark_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    return await save_logo(file, "dark_logo_path", db)
+    return serialize_company_settings(await save_logo(file, "dark_logo_path", db))
 
 @app.post("/api/settings/document-logo", response_model=schemas.CompanySettings)
 async def upload_document_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    return await save_logo(file, "document_logo_path", db)
+    return serialize_company_settings(await save_logo(file, "document_logo_path", db))
 
 @app.get("/api/customers", response_model=list[schemas.Customer])
 def read_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):

@@ -144,29 +144,31 @@ const App: React.FC = () => {
             <button type="button" className="btn btn-secondary btn-small" onClick={logout}>
               {t('Logout', 'Abmelden')}
             </button>
-            <button
-              type="button"
-              className="lang-toggle"
-              aria-label="Toggle language"
-              title={lang === 'en' ? 'Deutsch' : 'English'}
-              onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
-            >
-              {lang === 'en' ? 'DE' : 'EN'}
-            </button>
-            <button
-              type="button"
-              className="theme-toggle"
-              aria-pressed={isLightMode}
-              aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
-              title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
-              onClick={() => setIsLightMode(!isLightMode)}
-            >
-              {isLightMode ? (
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2M12 22v-2M4 12H2M22 12h-2M6.34 6.34 4.93 4.93M19.07 19.07l-1.41-1.41M17.66 6.34l1.41-1.41M4.93 19.07l1.41-1.41M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6 8.5 8.5 0 1 0 20.4 15.3Z" /></svg>
-              )}
-            </button>
+            <div className="nav-controls">
+              <button
+                type="button"
+                className="lang-toggle"
+                aria-label="Toggle language"
+                title={lang === 'en' ? 'Deutsch' : 'English'}
+                onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
+              >
+                {lang === 'en' ? 'DE' : 'EN'}
+              </button>
+              <button
+                type="button"
+                className="theme-toggle"
+                aria-pressed={isLightMode}
+                aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+                title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+                onClick={() => setIsLightMode(!isLightMode)}
+              >
+                {isLightMode ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2M12 22v-2M4 12H2M22 12h-2M6.34 6.34 4.93 4.93M19.07 19.07l-1.41-1.41M17.66 6.34l1.41-1.41M4.93 19.07l1.41-1.41M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6 8.5 8.5 0 1 0 20.4 15.3Z" /></svg>
+                )}
+              </button>
+            </div>
           </nav>
         </div>
       </header>
@@ -190,9 +192,15 @@ const App: React.FC = () => {
 
       <footer className="site-footer">
         <div className="container footer-inner">
-          <p>
-            &copy; <span id="year">{new Date().getFullYear()}</span>{' '}
-            <a href="https://oxocode.com" target="_blank" rel="noreferrer">oXoCode</a>
+          <p className="footer-brandline">
+            &copy; <span id="year">{new Date().getFullYear()}</span> made with{' '}
+            <span className="footer-heart" aria-label="love" role="img">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3 9.24 3 10.91 3.81 12 5.09 13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z" />
+              </svg>
+            </span>{' '}
+            by{' '}
+            <a className="footer-brand-link" href="https://oxocode.com" target="_blank" rel="noreferrer">oXoCode</a>
           </p>
         </div>
       </footer>
