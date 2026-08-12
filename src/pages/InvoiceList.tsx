@@ -155,13 +155,13 @@ const InvoiceList: React.FC = () => {
                       href={`/api/documents/download/${invoice.invoice_number}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="btn btn-secondary"
+                      className="btn btn-secondary btn-small btn-doc-action"
                     >
                       {t('Download Word', 'Word herunterladen')}
                     </a>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-small"
+                      className="btn btn-secondary btn-small btn-doc-action"
                       onClick={() => sharePdf(`/api/documents/download-pdf/${invoice.invoice_number}`, `${invoice.invoice_number}.pdf`)}
                     >
                       {t('Share PDF', 'PDF teilen')}
@@ -170,7 +170,7 @@ const InvoiceList: React.FC = () => {
                       href={`/api/documents/download-pdf/${invoice.invoice_number}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="btn btn-secondary btn-small hide-on-mobile"
+                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
                     >
                       {t('PDF direct link', 'PDF Direktlink')}
                     </a>

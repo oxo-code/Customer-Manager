@@ -155,7 +155,7 @@ const OfferList: React.FC = () => {
                       href={`/api/documents/download-offer/${offer.offer_number}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-secondary btn-small"
+                      className="btn btn-secondary btn-small btn-doc-action"
                     >
                       {t('Download Word', 'Word herunterladen')}
                     </a>
@@ -163,13 +163,13 @@ const OfferList: React.FC = () => {
                       href={`/api/documents/download-offer-pdf/${offer.offer_number}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="btn btn-secondary btn-small hide-on-mobile"
+                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
                     >
                       {t('Direct link', 'Direktlink')}
                     </a>
                     <button
                       type="button"
-                      className="btn btn-secondary btn-small"
+                      className="btn btn-secondary btn-small btn-doc-action"
                       onClick={() => sharePdf(`/api/documents/download-offer-pdf/${offer.offer_number}`, `${offer.offer_number}.pdf`)}
                     >
                       {t('Share', 'Teilen')}

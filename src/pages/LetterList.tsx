@@ -14,7 +14,7 @@ const LetterList: React.FC = () => {
 
   const loadLetters = async () => {
     try {
-      const response = await getLetters();
+                      className="btn btn-secondary btn-small btn-doc-action"
       setLetters(response.data.sort((a, b) => b.id - a.id));
     } catch (error) {
       console.error('Error loading letters:', error);
@@ -22,13 +22,13 @@ const LetterList: React.FC = () => {
   };
 
   const sharePdf = async (url: string, filename: string) => {
-    const nav = navigator as any;
+                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
     const absoluteUrl = new URL(url, window.location.origin).toString();
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
       if (nav.share && isIos) {
-        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
+                      className="btn btn-secondary btn-small btn-doc-action"
         return;
       }
 

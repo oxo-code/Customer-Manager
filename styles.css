@@ -502,6 +502,8 @@ a:hover {
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease, border-color 0.18s ease, transform 0.08s ease, box-shadow 0.18s ease;
   text-decoration: none;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
 }
 
 .btn-primary {
@@ -522,13 +524,38 @@ a:hover {
   background: transparent;
   color: var(--color-text);
   border-color: rgba(255, 255, 255, 0.18);
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.04));
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08));
 }
 
 .btn-secondary:hover {
-  border-color: rgba(255, 255, 255, 0.32);
+  border-color: rgba(255, 255, 255, 0.4);
   color: #ffffff;
-  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.08));
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.14));
+}
+
+.btn-small {
+  min-height: 2.2rem;
+  padding: 0.55rem 0.85rem;
+  font-size: 0.82rem;
+  font-weight: 650;
+  border-radius: 12px;
+  white-space: nowrap;
+}
+
+.btn-doc-action {
+  min-width: 9.5rem;
+}
+
+.btn-danger {
+  color: #fff;
+  border-color: rgba(230, 41, 40, 0.45);
+  background: linear-gradient(135deg, rgba(230, 41, 40, 0.3), rgba(181, 30, 29, 0.58));
+}
+
+.btn-danger:hover {
+  border-color: rgba(230, 41, 40, 0.72);
+  background: linear-gradient(135deg, rgba(230, 41, 40, 0.46), rgba(181, 30, 29, 0.8));
+  text-decoration: none;
 }
 
 .btn-fullwidth {
@@ -537,7 +564,7 @@ a:hover {
 
 .button-group {
   display: inline-flex;
-  gap: 0.5rem;
+  gap: 0.55rem;
   flex-wrap: wrap;
   align-items: center;
 }
@@ -605,6 +632,17 @@ a:hover {
   border-color: #b9bec7;
   color: var(--color-text);
   background-image: none;
+}
+
+:root[data-theme="light"] .btn-danger {
+  color: #ffffff;
+  border-color: rgba(188, 37, 37, 0.45);
+  background: linear-gradient(135deg, rgba(188, 37, 37, 0.86), rgba(148, 29, 29, 0.94));
+}
+
+:root[data-theme="light"] .btn-danger:hover {
+  border-color: rgba(148, 29, 29, 0.7);
+  background: linear-gradient(135deg, rgba(188, 37, 37, 0.96), rgba(148, 29, 29, 1));
 }
 
 :root[data-theme="light"] .hero-text {
@@ -733,7 +771,7 @@ a:hover {
 }
 
 .data-table td:last-child {
-  width: 190px;
+  width: 340px;
 }
 
 .form-grid {
