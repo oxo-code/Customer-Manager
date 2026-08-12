@@ -11,11 +11,11 @@ export default defineConfig({
     watch: {
       ignored: [
         '**/output/**',
+        '**/public/**',
+        '**/backend/.local/**',
+        '**/__pycache__/**',
         '**/mso*.tmp',
         '**/~$*',
-        '**/public/customer-manager-logo.jpg',
-        '**/public/customer-manager-logo.svg',
-        '**/public/customer-manager-logo-weiß.svg',
       ],
     },
     proxy: {

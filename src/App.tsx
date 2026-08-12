@@ -173,22 +173,24 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <Routes>
-        <Route path="/" element={<HomePage />} />
-        <Route path="/customers" element={<CustomerList />} />
-        <Route path="/customers/new" element={<CustomerForm />} />
-        <Route path="/customers/:id/edit" element={<CustomerForm />} />
-        <Route path="/invoices" element={<InvoiceList />} />
-        <Route path="/invoices/new" element={<InvoiceForm />} />
-        <Route path="/offers" element={<OfferList />} />
-        <Route path="/offers/new" element={<OfferForm />} />
-        <Route path="/letters" element={<LetterList />} />
-        <Route path="/letters/new" element={<LetterForm />} />
-        <Route path="/articles" element={<ArticleList />} />
-        <Route path="/articles/new" element={<ArticleForm />} />
-        <Route path="/articles/:id/edit" element={<ArticleForm />} />
-        <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
-      </Routes>
+      <main className="app-main">
+        <Routes>
+          <Route path="/" element={<HomePage />} />
+          <Route path="/customers" element={<CustomerList />} />
+          <Route path="/customers/new" element={<CustomerForm />} />
+          <Route path="/customers/:id/edit" element={<CustomerForm />} />
+          <Route path="/invoices" element={<InvoiceList />} />
+          <Route path="/invoices/new" element={<InvoiceForm />} />
+          <Route path="/offers" element={<OfferList />} />
+          <Route path="/offers/new" element={<OfferForm />} />
+          <Route path="/letters" element={<LetterList />} />
+          <Route path="/letters/new" element={<LetterForm />} />
+          <Route path="/articles" element={<ArticleList />} />
+          <Route path="/articles/new" element={<ArticleForm />} />
+          <Route path="/articles/:id/edit" element={<ArticleForm />} />
+          <Route path="/settings" element={<SettingsPage currentUser={currentUser} />} />
+        </Routes>
+      </main>
 
       <footer className="site-footer">
         <div className="container footer-inner">
