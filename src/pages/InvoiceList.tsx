@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getInvoices } from '../services/api';
+import { useLanguage } from '../i18n';
+import { deleteInvoice, getInvoices, updateInvoiceStatus } from '../services/api';
 import { Invoice } from '../types/api';
 
 const InvoiceList: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const { t } = useLanguage();
 
   useEffect(() => {
     loadInvoices();
@@ -19,6 +21,26 @@ const InvoiceList: React.FC = () => {
     }
   };
 
+  const finalizeInvoice = async (invoiceId: number) => {
+    try {
+      await updateInvoiceStatus(invoiceId, 'final');
+      await loadInvoices();
+    } catch (error) {
+      console.error('Error finalizing invoice:', error);
+      alert(t('The invoice could not be finalized.', 'Rechnung konnte nicht finalisiert werden.'));
+    }
+  };
+
+  const removeInvoice = async (invoiceId: number) => {
+    try {
+      await deleteInvoice(invoiceId);
+      await loadInvoices();
+    } catch (error) {
+      console.error('Error deleting invoice:', error);
+      alert(t('The invoice could not be deleted.', 'Rechnung konnte nicht gelöscht werden.'));
+    }
+  };
+
   const sharePdf = async (url: string, filename: string) => {
     const nav = navigator as any;
     const absoluteUrl = new URL(url, window.location.origin).toString();
@@ -26,7 +48,7 @@ const InvoiceList: React.FC = () => {
 
     try {
       if (nav.share && isIos) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -41,7 +63,7 @@ const InvoiceList: React.FC = () => {
       }
 
       if (nav.share) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -56,13 +78,13 @@ const InvoiceList: React.FC = () => {
       console.error('Share failed', error);
       if (nav.share) {
         try {
-          await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+          await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
           return;
         } catch {
           // fallback to download
         }
       }
-      alert('Teilen fehlgeschlagen. Die PDF wird heruntergeladen.');
+      alert(t('Sharing failed. The PDF will be downloaded instead.', 'Teilen fehlgeschlagen. Die PDF wird heruntergeladen.'));
       const link = document.createElement('a');
       link.href = absoluteUrl;
       link.download = filename;
@@ -76,12 +98,12 @@ const InvoiceList: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Invoices</p>
-          <h1 className="page-title">Rechnungen</h1>
-          <p className="page-copy">Übersicht deiner Rechnungen mit Status, Betrag und Kundenzuordnung.</p>
+          <p className="eyebrow">{t('Invoices', 'Rechnungen')}</p>
+          <h1 className="page-title">{t('Invoices', 'Rechnungen')}</h1>
+          <p className="page-copy">{t('Overview of your invoices with status, amount, and customer assignment.', 'Übersicht deiner Rechnungen mit Status, Betrag und Kundenzuordnung.')}</p>
         </div>
         <Link to="/invoices/new" className="btn btn-primary">
-          Neue Rechnung
+          {t('New invoice', 'Neue Rechnung')}
         </Link>
       </div>
 
@@ -90,12 +112,12 @@ const InvoiceList: React.FC = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Rechnungs Nr.</th>
-                <th>Kunde</th>
-                <th>Datum</th>
-                <th>Betrag</th>
-                <th>Status</th>
-                <th>Download</th>
+                <th>{t('Invoice No.', 'Rechnungs Nr.')}</th>
+                <th>{t('Customer', 'Kunde')}</th>
+                <th>{t('Date', 'Datum')}</th>
+                <th>{t('Amount', 'Betrag')}</th>
+                <th>{t('Status', 'Status')}</th>
+                <th>{t('Download', 'Download')}</th>
               </tr>
             </thead>
             <tbody>
@@ -105,22 +127,44 @@ const InvoiceList: React.FC = () => {
                   <td>{invoice.customer.name}</td>
                   <td>{new Date(invoice.date).toLocaleDateString()}</td>
                   <td>{invoice.total_amount} €</td>
-                  <td>{invoice.status}</td>
+                  <td>
+                    <span className={`status status--${invoice.status}`}>
+                      {invoice.status}
+                    </span>
+                  </td>
                   <td className="button-group">
+                    {invoice.status === 'draft' && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          onClick={() => finalizeInvoice(invoice.id)}
+                        >
+                          {t('Final', 'Final')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-small"
+                          onClick={() => removeInvoice(invoice.id)}
+                        >
+                          {t('Delete', 'Löschen')}
+                        </button>
+                      </>
+                    )}
                     <a
                       href={`/api/documents/download/${invoice.invoice_number}`}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-secondary"
                     >
-                      Download Word
+                      {t('Download Word', 'Word herunterladen')}
                     </a>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
                       onClick={() => sharePdf(`/api/documents/download-pdf/${invoice.invoice_number}`, `${invoice.invoice_number}.pdf`)}
                     >
-                      PDF Teilen
+                      {t('Share PDF', 'PDF teilen')}
                     </button>
                     <a
                       href={`/api/documents/download-pdf/${invoice.invoice_number}`}
@@ -128,7 +172,7 @@ const InvoiceList: React.FC = () => {
                       rel="noreferrer"
                       className="btn btn-secondary btn-small hide-on-mobile"
                     >
-                      PDF Direktlink
+                      {t('PDF direct link', 'PDF Direktlink')}
                     </a>
                   </td>
                 </tr>

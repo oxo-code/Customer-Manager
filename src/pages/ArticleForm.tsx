@@ -1,11 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useLanguage } from '../i18n';
 import { createArticle, getArticle, updateArticle } from '../services/api';
 
 const ArticleForm: React.FC = () => {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const isEdit = !!id;
+  const { t } = useLanguage();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -55,63 +57,63 @@ const ArticleForm: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Artikel</p>
-          <h1 className="page-title">{isEdit ? 'Artikel bearbeiten' : 'Neuer Artikel'}</h1>
-          <p className="page-copy">Lege einen Artikel mit Standardmenge und Standardpreis an.</p>
+          <p className="eyebrow">{t('Articles', 'Artikel')}</p>
+          <h1 className="page-title">{isEdit ? t('Edit article', 'Artikel bearbeiten') : t('New article', 'Neuer Artikel')}</h1>
+          <p className="page-copy">{t('Create an article with default quantity and default price.', 'Lege einen Artikel mit Standardmenge und Standardpreis an.')}</p>
         </div>
       </div>
 
       <div className="card">
         <form className="form-grid" onSubmit={handleSubmit}>
           <div className="form-field">
-            <label>Name</label>
+            <label>{t('Name', 'Name')}</label>
             <input
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Artikelname"
+              placeholder={t('Article name', 'Artikelname')}
               required
             />
           </div>
 
           <div className="form-field">
-            <label>Beschreibung</label>
+            <label>{t('Description', 'Beschreibung')}</label>
             <input
               type="text"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Optionale Beschreibung"
+              placeholder={t('Optional description', 'Optionale Beschreibung')}
             />
           </div>
 
           <div className="form-field">
-            <label>Standardmenge</label>
+            <label>{t('Default quantity', 'Standardmenge')}</label>
             <input
               type="text"
               value={defaultQuantity}
               onChange={(e) => setDefaultQuantity(e.target.value)}
-              placeholder="Menge (z. B. 1 oder 2,5)"
+              placeholder={t('Quantity (e.g. 1 or 2.5)', 'Menge (z. B. 1 oder 2,5)')}
               inputMode="decimal"
             />
           </div>
 
           <div className="form-field">
-            <label>Standardpreis (€)</label>
+            <label>{t('Default price (€)', 'Standardpreis (€)')}</label>
             <input
               type="text"
               value={defaultPrice}
               onChange={(e) => setDefaultPrice(e.target.value)}
-              placeholder="Preis (z. B. 10,99)"
+              placeholder={t('Price (e.g. 10.99)', 'Preis (z. B. 10,99)')}
               inputMode="decimal"
             />
           </div>
 
           <div className="full-width action-row">
             <button type="submit" className="btn btn-primary">
-              {isEdit ? 'Speichern' : 'Artikel anlegen'}
+              {isEdit ? t('Save', 'Speichern') : t('Create article', 'Artikel anlegen')}
             </button>
             <button type="button" onClick={() => navigate('/articles')} className="btn btn-secondary">
-              Abbrechen
+              {t('Cancel', 'Abbrechen')}
             </button>
           </div>
         </form>

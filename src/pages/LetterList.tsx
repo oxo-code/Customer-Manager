@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../i18n';
 import { getLetters } from '../services/api';
 import { Letter } from '../types/api';
 
 const LetterList: React.FC = () => {
   const [letters, setLetters] = useState<Letter[]>([]);
+  const { t } = useLanguage();
 
   useEffect(() => {
     loadLetters();
@@ -26,7 +28,7 @@ const LetterList: React.FC = () => {
 
     try {
       if (nav.share && isIos) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -41,7 +43,7 @@ const LetterList: React.FC = () => {
       }
 
       if (nav.share) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -56,13 +58,13 @@ const LetterList: React.FC = () => {
       console.error('Share failed', error);
       if (nav.share) {
         try {
-          await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+          await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
           return;
         } catch {
           // fallback to download
         }
       }
-      alert('Teilen fehlgeschlagen. Die PDF wird heruntergeladen.');
+      alert(t('Sharing failed. The PDF will be downloaded instead.', 'Teilen fehlgeschlagen. Die PDF wird heruntergeladen.'));
       const link = document.createElement('a');
       link.href = absoluteUrl;
       link.download = filename;
@@ -76,12 +78,12 @@ const LetterList: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Letters</p>
-          <h1 className="page-title">Briefe</h1>
-          <p className="page-copy">Übersicht deiner Briefe mit Betreff, Inhalt und Kundenzuordnung.</p>
+          <p className="eyebrow">{t('Letters', 'Briefe')}</p>
+          <h1 className="page-title">{t('Letters', 'Briefe')}</h1>
+          <p className="page-copy">{t('Overview of your letters with subject, content, and customer assignment.', 'Übersicht deiner Briefe mit Betreff, Inhalt und Kundenzuordnung.')}</p>
         </div>
         <Link to="/letters/new" className="btn btn-primary">
-          Neuer Brief
+          {t('New letter', 'Neuer Brief')}
         </Link>
       </div>
 
@@ -91,10 +93,10 @@ const LetterList: React.FC = () => {
             <thead>
               <tr>
                 <th>ID</th>
-                <th>Kunde</th>
-                <th>Betreff</th>
-                <th>Datum</th>
-                <th>Download</th>
+                <th>{t('Customer', 'Kunde')}</th>
+                <th>{t('Subject', 'Betreff')}</th>
+                <th>{t('Date', 'Datum')}</th>
+                <th>{t('Download', 'Download')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,14 +113,14 @@ const LetterList: React.FC = () => {
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small hide-on-mobile"
                     >
-                      Direktlink
+                      {t('Direct link', 'Direktlink')}
                     </a>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
                       onClick={() => sharePdf(`/api/documents/download-letter-pdf/${letter.id}`, `brief-${letter.id}.pdf`)}
                     >
-                      Teilen
+                      {t('Share', 'Teilen')}
                     </button>
                   </td>
                 </tr>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { Routes, Route, Link, NavLink, useLocation } from 'react-router-dom';
 import HomePage from './pages/HomePage';
 import CustomerList from './pages/CustomerList';
 import CustomerForm from './pages/CustomerForm';
@@ -11,35 +11,81 @@ import LetterList from './pages/LetterList';
 import LetterForm from './pages/LetterForm';
 import ArticleList from './pages/ArticleList';
 import ArticleForm from './pages/ArticleForm';
+import SettingsPage from './pages/SettingsPage';
+import { getCompanySettings } from './services/api';
+import { useLanguage } from './i18n';
 
 const App: React.FC = () => {
   const location = useLocation();
   const isHome = location.pathname === '/';
+  const { lang, setLang, t } = useLanguage();
+  const [companyName, setCompanyName] = useState('Customer Manager');
+  const [logoPath, setLogoPath] = useState<string>();
+  const [darkLogoPath, setDarkLogoPath] = useState<string>();
+  const [isLightMode, setIsLightMode] = useState(() => localStorage.getItem('theme') === 'light');
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = isLightMode ? 'light' : 'dark';
+    localStorage.setItem('theme', isLightMode ? 'light' : 'dark');
+  }, [isLightMode]);
+
+  useEffect(() => {
+    getCompanySettings().then(({ data }) => {
+      setCompanyName(data.company_name || 'Customer Manager');
+      setLogoPath(data.logo_path);
+      setDarkLogoPath(data.dark_logo_path);
+    }).catch(() => undefined);
+  }, [location.pathname]);
 
   return (
     <div className={`app-root${isHome ? ' app-root--home' : ''}`}>
       <header className={`site-header${isHome ? ' site-header--over-hero' : ''}`}>
         <div className="container header-inner">
-          <a href="/" className="logo">
-            <img src="/logo.png" alt="Customer Manager" className="logo-image" />
-            <span className="logo-text">Customer Manager</span>
-          </a>
+          <Link to="/" className="logo">
+            {(isLightMode ? logoPath : darkLogoPath || logoPath) ? <img src={isLightMode ? logoPath : darkLogoPath || logoPath} alt={companyName} className="logo-image" /> : <span className="logo-name">{companyName}</span>}
+          </Link>
           <nav className="main-nav">
             <NavLink to="/customers" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-              Kunden
+              {t('Customers', 'Kunden')}
             </NavLink>
             <NavLink to="/invoices" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-              Rechnungen
+              {t('Invoices', 'Rechnungen')}
             </NavLink>
             <NavLink to="/offers" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-              Angebote
+              {t('Offers', 'Angebote')}
             </NavLink>
             <NavLink to="/letters" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-              Briefe
+              {t('Letters', 'Briefe')}
             </NavLink>
             <NavLink to="/articles" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-              Artikel
+              {t('Articles', 'Artikel')}
             </NavLink>
+            <NavLink to="/settings" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
+              {t('Settings', 'Einstellungen')}
+            </NavLink>
+            <button
+              type="button"
+              className="lang-toggle"
+              aria-label="Toggle language"
+              title={lang === 'en' ? 'Deutsch' : 'English'}
+              onClick={() => setLang(lang === 'en' ? 'de' : 'en')}
+            >
+              {lang === 'en' ? 'DE' : 'EN'}
+            </button>
+            <button
+              type="button"
+              className="theme-toggle"
+              aria-pressed={isLightMode}
+              aria-label={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              title={isLightMode ? 'Switch to dark mode' : 'Switch to light mode'}
+              onClick={() => setIsLightMode(!isLightMode)}
+            >
+              {isLightMode ? (
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4V2M12 22v-2M4 12H2M22 12h-2M6.34 6.34 4.93 4.93M19.07 19.07l-1.41-1.41M17.66 6.34l1.41-1.41M4.93 19.07l1.41-1.41M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z" /></svg>
+              ) : (
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.4 15.3A8.5 8.5 0 0 1 8.7 3.6 8.5 8.5 0 1 0 20.4 15.3Z" /></svg>
+              )}
+            </button>
           </nav>
         </div>
       </header>
@@ -58,12 +104,14 @@ const App: React.FC = () => {
         <Route path="/articles" element={<ArticleList />} />
         <Route path="/articles/new" element={<ArticleForm />} />
         <Route path="/articles/:id/edit" element={<ArticleForm />} />
+        <Route path="/settings" element={<SettingsPage />} />
       </Routes>
 
       <footer className="site-footer">
         <div className="container footer-inner">
           <p>
-            &copy; <span id="year">{new Date().getFullYear()}</span> Customer Manager. All rights reserved.
+            &copy; <span id="year">{new Date().getFullYear()}</span>{' '}
+            <a href="https://oxocode.com" target="_blank" rel="noreferrer">oXoCode</a>
           </p>
         </div>
       </footer>

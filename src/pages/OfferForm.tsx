@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useLanguage } from '../i18n';
 import { getCustomers, createOffer, generateOfferDocument, getArticles } from '../services/api';
 import { Customer, OfferItem, Article } from '../types/api';
 
 const OfferForm: React.FC = () => {
   const navigate = useNavigate();
+  const { t } = useLanguage();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | ''>('');
@@ -98,15 +100,15 @@ const OfferForm: React.FC = () => {
     // Validiere dass alle Items korrekte Werte haben
     for (const item of items) {
       if (!item.description.trim()) {
-        alert('Alle Artikel brauchen eine Beschreibung');
+        alert(t('Every item needs a description.', 'Alle Artikel brauchen eine Beschreibung.'));
         return;
       }
       if (item.quantity <= 0) {
-        alert('Menge muss größer als 0 sein');
+        alert(t('Quantity must be greater than 0.', 'Menge muss größer als 0 sein.'));
         return;
       }
       if (item.unit_price <= 0) {
-        alert('Preis muss größer als 0 sein');
+        alert(t('Price must be greater than 0.', 'Preis muss größer als 0 sein.'));
         return;
       }
     }
@@ -138,18 +140,18 @@ const OfferForm: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Offers</p>
-          <h1 className="page-title">Neues Angebot erstellen</h1>
-          <p className="page-copy">Erstelle ein neues Angebot und füge Artikelpositionen direkt hinzu.</p>
+          <p className="eyebrow">{t('Offers', 'Angebote')}</p>
+          <h1 className="page-title">{t('Create a new offer', 'Neues Angebot erstellen')}</h1>
+          <p className="page-copy">{t('Create a new offer and add item positions directly.', 'Erstelle ein neues Angebot und füge Artikelpositionen direkt hinzu.')}</p>
         </div>
       </div>
 
       <div className="card">
         <form className="form-grid" onSubmit={handleSubmit}>
           <div className="form-field">
-            <label>Kunde</label>
+            <label>{t('Customer', 'Kunde')}</label>
             <select value={selectedCustomerId} onChange={(e) => setSelectedCustomerId(parseInt(e.target.value) || '')} required>
-              <option value="">Kunde auswählen</option>
+              <option value="">{t('Select customer', 'Kunde auswählen')}</option>
               {customers.map(customer => (
                 <option key={customer.id} value={customer.id}>{customer.name} {customer.firma && `(${customer.firma})`}</option>
               ))}
@@ -157,12 +159,12 @@ const OfferForm: React.FC = () => {
           </div>
 
           <div className="form-field">
-            <label>Datum</label>
+            <label>{t('Date', 'Datum')}</label>
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
           </div>
 
           <div className="form-field">
-            <label>Gültig bis</label>
+            <label>{t('Valid until', 'Gültig bis')}</label>
             <input
               type="date"
               value={validUntil}
@@ -172,39 +174,39 @@ const OfferForm: React.FC = () => {
           </div>
 
           <div className="full-width">
-            <h2>Artikel</h2>
+            <h2>{t('Items', 'Artikel')}</h2>
             <div className="item-list">
               {items.map((item, index) => (
                 <div key={index} className="item-row form-field full-width">
                   <select onChange={(e) => handleSelectArticle(index, e.target.value)} defaultValue="">
-                    <option value="">Artikel auswählen ...</option>
+                    <option value="">{t('Select article...', 'Artikel auswählen ...')}</option>
                     {articles.map(a => (
                       <option key={a.id} value={a.id}>{a.name}</option>
                     ))}
                   </select>
                   <input
                     type="text"
-                    placeholder="Artikelbeschreibung"
+                    placeholder={t('Item description', 'Artikelbeschreibung')}
                     value={item.description}
                     onChange={(e) => handleItemChange(index, 'description', e.target.value)}
                     required
                   />
                   <input
                     type="text"
-                    placeholder="Menge (z. B. 2 oder 2,5)"
+                    placeholder={t('Quantity (e.g. 2 or 2.5)', 'Menge (z. B. 2 oder 2,5)')}
                     value={item.quantity_str ?? ''}
                     onChange={(e) => handleNumericInput(index, 'quantity', e.target.value)}
                     inputMode="decimal"
                   />
                   <input
                     type="text"
-                    placeholder="Einzelpreis (z. B. 10,99)"
+                    placeholder={t('Unit price (e.g. 10.99)', 'Einzelpreis (z. B. 10,99)')}
                     value={item.unit_price_str ?? ''}
                     onChange={(e) => handleNumericInput(index, 'unit_price', e.target.value)}
                     inputMode="decimal"
                   />
                   <button type="button" onClick={() => handleRemoveItem(index)} className="btn btn-secondary">
-                    Entfernen
+                    {t('Remove', 'Entfernen')}
                   </button>
                 </div>
               ))}
@@ -214,14 +216,14 @@ const OfferForm: React.FC = () => {
           </div>
           <div className="full-width action-row">
             <button type="button" onClick={handleAddItem} className="btn btn-secondary">
-              Artikel hinzufügen
+              {t('Add item', 'Artikel hinzufügen')}
             </button>
             <div className="form-actions">
               <button type="submit" className="btn btn-primary">
-                Angebot erstellen
+                {t('Create offer', 'Angebot erstellen')}
               </button>
               <button type="button" onClick={() => navigate('/offers')} className="btn btn-secondary">
-                Abbrechen
+                {t('Cancel', 'Abbrechen')}
               </button>
             </div>
           </div>

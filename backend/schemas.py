@@ -128,3 +128,30 @@ class Article(ArticleBase):
 
     class Config:
         from_attributes = True
+
+class CompanySettingsBase(BaseModel):
+    company_name: str = "Customer Manager"
+    full_name: Optional[str] = None
+    street: Optional[str] = None
+    postal_code: Optional[str] = None
+    city: Optional[str] = None
+    country: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    tax_number: Optional[str] = None
+    vat_id: Optional[str] = None
+    bank_name: Optional[str] = None
+    iban: Optional[str] = None
+    bic: Optional[str] = None
+
+class CompanySettingsUpdate(CompanySettingsBase):
+    pass
+
+class CompanySettings(CompanySettingsBase):
+    id: int
+    logo_path: Optional[str] = None
+    dark_logo_path: Optional[str] = None
+    document_logo_path: Optional[str] = None
+
+    class Config:
+        from_attributes = True

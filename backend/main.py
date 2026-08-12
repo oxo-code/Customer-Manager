@@ -1,12 +1,16 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 import os
-import subprocess
-import pwd
-import grp
-from docxtpl import DocxTemplate
+import shutil
+import threading
+from uuid import uuid4
+from docxtpl import DocxTemplate, InlineImage
+from docx.shared import Mm
+from docx2pdf import convert
 from datetime import datetime
 from . import crud, models, schemas
 from .database import SessionLocal, engine
@@ -14,11 +18,30 @@ from .models import Customer, Invoice, InvoiceItem, Counter
 
 models.Base.metadata.create_all(bind=engine)
 
+with engine.begin() as connection:
+    columns = {column[1] for column in connection.execute(text("PRAGMA table_info(company_settings)"))}
+    if "dark_logo_path" not in columns:
+        connection.execute(text("ALTER TABLE company_settings ADD COLUMN dark_logo_path VARCHAR"))
+    if "full_name" not in columns:
+        connection.execute(text("ALTER TABLE company_settings ADD COLUMN full_name VARCHAR"))
+    if "document_logo_path" not in columns:
+        connection.execute(text("ALTER TABLE company_settings ADD COLUMN document_logo_path VARCHAR"))
+
 app = FastAPI(title="Customer Manager API")
+PDF_CONVERSION_LOCK = threading.Lock()
+
+UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "uploads"))
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+app.mount("/api/uploads", StaticFiles(directory=UPLOADS_DIR), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vite dev server
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:4173",
+        "http://127.0.0.1:4173",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -39,42 +62,78 @@ def get_output_dir():
     return output_dir
 
 
-# Funktion zur Konvertierung von DOCX zu PDF mit LibreOffice
-def convert_docx_to_pdf(input_path: str, output_dir: str):
-    if not os.path.exists(input_path):
-        raise FileNotFoundError(f"Die Datei {input_path} wurde nicht gefunden.")
+def build_company_template_context(settings):
+    if settings is None:
+        return {
+            "name": "Customer Manager",
+            "vollername": "Customer Manager",
+            "adresse": "",
+            "plz": "",
+            "ort": "",
+            "telefon": "",
+            "email": "",
+            "steuernr": "",
+            "bank": "",
+            "iban": "",
+            "bic": "",
+            "logo": "",
+        }
 
-    # Sicherstellen, dass das Ausgabeverzeichnis existiert
-    os.makedirs(output_dir, exist_ok=True)
+    return {
+        "name": settings.company_name or "Customer Manager",
+        "vollername": settings.full_name or settings.company_name or "Customer Manager",
+        "adresse": settings.street or "",
+        "plz": settings.postal_code or "",
+        "ort": settings.city or "",
+        "telefon": settings.phone or "",
+        "email": settings.email or "",
+        "steuernr": settings.tax_number or "",
+        "bank": settings.bank_name or "",
+        "iban": settings.iban or "",
+        "bic": settings.bic or "",
+        "logo": settings.document_logo_path or settings.logo_path or settings.dark_logo_path or "",
+    }
 
-    # Zielpfad für die PDF-Datei
-    output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(input_path))[0] + ".pdf")
 
-    # Überprüfen, ob die Datei bereits existiert
-    if os.path.exists(output_file):
-        print(f"Die Datei {output_file} existiert bereits. Keine Konvertierung erforderlich.")
-        return output_file
-
-    try:
-        # LibreOffice-Befehl ausführen
-        subprocess.run([
-            "libreoffice", "--headless", "--convert-to", "pdf", input_path, "--outdir", output_dir
-        ], check=True)
-
-        # Besitzrechte der Datei ändern
-        current_user = pwd.getpwuid(os.getuid()).pw_name
-        current_group = grp.getgrgid(os.getgid()).gr_name
-        os.chown(output_file, os.getuid(), os.getgid())
-        print(f"Besitzrechte der Datei {output_file} wurden auf {current_user}:{current_group} gesetzt.")
-
-        print(f"Die Datei wurde erfolgreich in {output_file} konvertiert.")
-        return output_file
-    except Exception as e:
-        print(f"Fehler bei der Konvertierung: {e}")
+def resolve_logo_file_path(logo_value: str):
+    if not logo_value:
         return None
 
+    if logo_value.startswith("/api/uploads/"):
+        file_name = os.path.basename(logo_value)
+        candidate = os.path.join(UPLOADS_DIR, file_name)
+        return candidate if os.path.exists(candidate) else None
 
-def render_invoice_docx(invoice):
+    if os.path.isabs(logo_value) and os.path.exists(logo_value):
+        return logo_value
+
+    return None
+
+
+def apply_logo_to_context(docx: DocxTemplate, context: dict):
+    mandant = context.get("mandant")
+    if not isinstance(mandant, dict):
+        return
+
+    logo_value = mandant.get("logo")
+    if not isinstance(logo_value, str):
+        mandant["logo"] = ""
+        return
+
+    logo_file_path = resolve_logo_file_path(logo_value)
+    allowed_extensions = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".tif", ".tiff"}
+    if logo_file_path and os.path.splitext(logo_file_path)[1].lower() in allowed_extensions:
+        mandant["logo"] = InlineImage(docx, logo_file_path, width=Mm(36))
+    else:
+        mandant["logo"] = ""
+
+
+def get_company_template_context(db: Session | None = None):
+    settings = crud.get_company_settings(db) if db is not None else None
+    return build_company_template_context(settings)
+
+
+def build_invoice_context(invoice, company_settings):
     customer = invoice.customer
     items = invoice.items
     total_netto = invoice.total_amount
@@ -100,22 +159,14 @@ def render_invoice_docx(invoice):
         ],
         "total_netto": f"{total_netto:.2f} €",
         "mwst": f"{mwst:.2f} €",
-        "total_brutto": f"{total_brutto:.2f} €"
+        "total_brutto": f"{total_brutto:.2f} €",
+        "mandant": build_company_template_context(company_settings),
     }
-    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "invoice_template.docx")
-    template_path = os.path.abspath(template_path)
-    if not os.path.exists(template_path):
-        raise HTTPException(status_code=404, detail="Template not found")
 
-    docx = DocxTemplate(template_path)
-    docx.render(context)
-    output_dir = get_output_dir()
-    output_path = os.path.join(output_dir, f"invoice_{invoice.invoice_number}.docx")
-    docx.save(output_path)
-    return output_path
+    return context
 
 
-def render_offer_docx(offer):
+def build_offer_context(offer, company_settings):
     items = offer.items
     total_netto = offer.total_amount
     mwst = total_netto * 0.19
@@ -148,22 +199,14 @@ def render_offer_docx(offer):
         ],
         "total_netto": f"{total_netto:.2f} €",
         "mwst": f"{mwst:.2f} €",
-        "total_brutto": f"{total_brutto:.2f} €"
+        "total_brutto": f"{total_brutto:.2f} €",
+        "mandant": build_company_template_context(company_settings),
     }
-    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "offer_template.docx")
-    template_path = os.path.abspath(template_path)
-    if not os.path.exists(template_path):
-        raise HTTPException(status_code=404, detail="Offer template not found")
 
-    docx = DocxTemplate(template_path)
-    docx.render(context)
-    output_dir = get_output_dir()
-    output_path = os.path.join(output_dir, f"offer_{offer.offer_number}.docx")
-    docx.save(output_path)
-    return output_path
+    return context
 
 
-def render_letter_docx(letter):
+def build_letter_context(letter, company_settings):
     context = {
         "customer": {
             "name": letter.customer.name,
@@ -178,19 +221,195 @@ def render_letter_docx(letter):
             "subject": letter.subject,
             "content": letter.content,
             "date": letter.date.strftime("%d.%m.%Y") if hasattr(letter.date, 'strftime') else str(letter.date)
-        }
+        },
+        "mandant": build_company_template_context(company_settings),
     }
+
+    return context
+
+
+# Funktion zur Konvertierung von DOCX zu PDF mit docx2pdf
+def convert_docx_to_pdf(input_path: str, output_dir: str):
+    input_path = os.path.abspath(input_path)
+    output_dir = os.path.abspath(output_dir)
+
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Die Datei {input_path} wurde nicht gefunden.")
+
+    # Sicherstellen, dass das Ausgabeverzeichnis existiert
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Zielpfad für die PDF-Datei
+    output_file = os.path.join(output_dir, os.path.splitext(os.path.basename(input_path))[0] + ".pdf")
+    temp_output_file = os.path.join(
+        output_dir,
+        f"{os.path.splitext(os.path.basename(input_path))[0]}_{uuid4().hex}.pdf",
+    )
+
+    def convert_via_word_com(source_path: str, target_path: str):
+        import pythoncom
+        import win32com.client
+
+        word = None
+        document = None
+        pythoncom.CoInitialize()
+        try:
+            word = win32com.client.DispatchEx("Word.Application")
+            word.Visible = False
+            word.DisplayAlerts = 0
+
+            document = word.Documents.Open(source_path)
+            # 17 = wdExportFormatPDF
+            document.ExportAsFixedFormat(target_path, 17)
+        finally:
+            if document is not None:
+                document.Close(False)
+            if word is not None:
+                word.Quit()
+            pythoncom.CoUninitialize()
+
+    with PDF_CONVERSION_LOCK:
+        try:
+            convert(input_path, temp_output_file)
+
+            if not os.path.exists(temp_output_file):
+                raise RuntimeError("docx2pdf did not create a PDF file.")
+
+            os.replace(temp_output_file, output_file)
+
+            print(f"Die Datei wurde erfolgreich in {output_file} konvertiert.")
+            return output_file
+        except Exception as e:
+            error_message = str(e).lower()
+            if "invalid class string" in error_message or "ungültige klassenzeichenfolge" in error_message:
+                raise RuntimeError(
+                    "Microsoft Word wurde nicht gefunden oder ist nicht registriert. "
+                    "docx2pdf benötigt eine lokal installierte Microsoft-Word-Desktopanwendung."
+                ) from e
+
+            # Fallback bei typischen COM/Word-Fehlern aus docx2pdf.
+            # Der direkte COM-Export initialisiert COM explizit und ist robuster.
+            if (
+                "this command is not available" in error_message
+                or "ausnahmefehler aufgetreten" in error_message
+                or "coinitialize wurde nicht aufgerufen" in error_message
+                or "coinitialize has not been called" in error_message
+            ):
+                try:
+                    convert_via_word_com(input_path, temp_output_file)
+                    if os.path.exists(temp_output_file):
+                        os.replace(temp_output_file, output_file)
+                        print(f"Die Datei wurde erfolgreich in {output_file} konvertiert.")
+                        return output_file
+                except Exception as fallback_error:
+                    raise RuntimeError(
+                        f"DOCX-zu-PDF-Konvertierung über Word COM fehlgeschlagen: {fallback_error}"
+                    ) from fallback_error
+
+            raise RuntimeError(
+                f"DOCX-zu-PDF-Konvertierung mit docx2pdf fehlgeschlagen: {e}"
+            ) from e
+        finally:
+            if os.path.exists(temp_output_file):
+                try:
+                    os.remove(temp_output_file)
+                except OSError:
+                    pass
+
+
+def render_invoice_docx(invoice, db: Session | None = None):
+    company_settings = crud.get_company_settings(db) if db is not None else None
+    context = build_invoice_context(invoice, company_settings)
+    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "invoice_template.docx")
+    template_path = os.path.abspath(template_path)
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Template not found")
+
+    docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
+    docx.render(context)
+    output_dir = get_output_dir()
+    output_path = os.path.join(output_dir, f"invoice_{invoice.invoice_number}.docx")
+    docx.save(output_path)
+    return output_path
+
+
+def render_offer_docx(offer, db: Session | None = None):
+    company_settings = crud.get_company_settings(db) if db is not None else None
+    context = build_offer_context(offer, company_settings)
+    template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "offer_template.docx")
+    template_path = os.path.abspath(template_path)
+    if not os.path.exists(template_path):
+        raise HTTPException(status_code=404, detail="Offer template not found")
+
+    docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
+    docx.render(context)
+    output_dir = get_output_dir()
+    output_path = os.path.join(output_dir, f"offer_{offer.offer_number}.docx")
+    docx.save(output_path)
+    return output_path
+
+
+def render_letter_docx(letter, db: Session | None = None):
+    company_settings = crud.get_company_settings(db) if db is not None else None
+    context = build_letter_context(letter, company_settings)
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "briefvorlage.docx")
     template_path = os.path.abspath(template_path)
     if not os.path.exists(template_path):
         raise HTTPException(status_code=404, detail="Letter template not found")
 
     docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
     docx.render(context)
     output_dir = get_output_dir()
     output_path = os.path.join(output_dir, f"letter_{letter.id}.docx")
     docx.save(output_path)
     return output_path
+
+@app.get("/api/settings", response_model=schemas.CompanySettings)
+def read_company_settings(db: Session = Depends(get_db)):
+    settings = crud.get_company_settings(db)
+    if settings:
+        return settings
+    return schemas.CompanySettings(id=0, company_name="Customer Manager")
+
+@app.put("/api/settings", response_model=schemas.CompanySettings)
+def save_company_settings(settings: schemas.CompanySettingsUpdate, db: Session = Depends(get_db)):
+    return crud.update_company_settings(db, settings)
+
+async def save_logo(file: UploadFile, field_name: str, db: Session):
+    extension = os.path.splitext(file.filename or "")[1].lower()
+    if field_name == "document_logo_path":
+        allowed_extensions = {".jpg", ".jpeg", ".png"}
+        allowed_content_types = {"image/jpeg", "image/png", "application/octet-stream"}
+        error_detail = "Für Dokumente sind nur JPG oder PNG erlaubt."
+    else:
+        allowed_extensions = {".jpg", ".jpeg", ".png", ".webp", ".svg"}
+        allowed_content_types = {"image/jpeg", "image/png", "image/webp", "image/svg+xml", "application/octet-stream"}
+        error_detail = "Nur JPG, PNG, WebP oder SVG sind erlaubt."
+
+    if extension not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="Ungültiges Bildformat.")
+    if file.content_type and file.content_type not in allowed_content_types:
+        raise HTTPException(status_code=400, detail=error_detail)
+    file_name = f"{field_name}-{uuid4().hex}{extension}"
+    target_path = os.path.join(UPLOADS_DIR, file_name)
+    with open(target_path, "wb") as target:
+        shutil.copyfileobj(file.file, target)
+    return crud.update_company_logo(db, f"/api/uploads/{file_name}", field_name)
+
+@app.post("/api/settings/logo", response_model=schemas.CompanySettings)
+async def upload_company_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await save_logo(file, "logo_path", db)
+
+@app.post("/api/settings/dark-logo", response_model=schemas.CompanySettings)
+async def upload_company_dark_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await save_logo(file, "dark_logo_path", db)
+
+@app.post("/api/settings/document-logo", response_model=schemas.CompanySettings)
+async def upload_document_logo(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    return await save_logo(file, "document_logo_path", db)
 
 @app.get("/api/customers", response_model=list[schemas.Customer])
 def read_customers(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
@@ -238,6 +457,23 @@ def read_invoice(invoice_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Invoice not found")
     return db_invoice
 
+@app.patch("/api/invoices/{invoice_id}/status")
+def update_invoice_status(invoice_id: int, payload: dict, db: Session = Depends(get_db)):
+    status = payload.get("status")
+    if status not in {"draft", "final"}:
+        raise HTTPException(status_code=400, detail="Status must be 'draft' or 'final'.")
+    invoice = crud.update_invoice_status(db, invoice_id=invoice_id, status=status)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return invoice
+
+@app.delete("/api/invoices/{invoice_id}")
+def delete_invoice(invoice_id: int, db: Session = Depends(get_db)):
+    invoice = crud.delete_invoice(db, invoice_id=invoice_id)
+    if invoice is None:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    return {"message": "Invoice deleted"}
+
 @app.post("/api/offers/create", response_model=schemas.Offer)
 def create_offer(offer: schemas.OfferCreate, db: Session = Depends(get_db)):
     return crud.create_offer(db=db, offer=offer)
@@ -253,6 +489,23 @@ def read_offer(offer_id: int, db: Session = Depends(get_db)):
     if db_offer is None:
         raise HTTPException(status_code=404, detail="Offer not found")
     return db_offer
+
+@app.patch("/api/offers/{offer_id}/status")
+def update_offer_status(offer_id: int, payload: dict, db: Session = Depends(get_db)):
+    status = payload.get("status")
+    if status not in {"draft", "final"}:
+        raise HTTPException(status_code=400, detail="Status must be 'draft' or 'final'.")
+    offer = crud.update_offer_status(db, offer_id=offer_id, status=status)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    return offer
+
+@app.delete("/api/offers/{offer_id}")
+def delete_offer(offer_id: int, db: Session = Depends(get_db)):
+    offer = crud.delete_offer(db, offer_id=offer_id)
+    if offer is None:
+        raise HTTPException(status_code=404, detail="Offer not found")
+    return {"message": "Offer deleted"}
 
 @app.post("/api/letters/create", response_model=schemas.Letter)
 def create_letter(letter: schemas.LetterCreate, db: Session = Depends(get_db)):
@@ -280,33 +533,8 @@ def generate_document(doc: schemas.DocumentGenerate, db: Session = Depends(get_d
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    items = invoice.items
-    total_netto = invoice.total_amount
-    mwst = total_netto * 0.19
-    total_brutto = total_netto + mwst
-
-    context = {
-        "customer_name": customer.name,
-        "firma": customer.firma or "",
-        "adresse": customer.adresse,
-        "plz": customer.plz,
-        "ort": customer.ort,
-        "email": customer.email or "",
-        "telefon": customer.telefon or "",
-        "invoice_number": invoice.invoice_number,
-        "date": invoice.date.strftime("%d.%m.%Y") if hasattr(invoice.date, 'strftime') else str(invoice.date),
-        "items": [
-            {
-                "description": item.description,
-                "quantity": item.quantity,
-                "unit_price": f"{item.unit_price:.2f} €",
-                "total_price": f"{item.total_price:.2f} €"
-            } for item in items
-        ],
-        "total_netto": f"{total_netto:.2f} €",
-        "mwst": f"{mwst:.2f} €",
-        "total_brutto": f"{total_brutto:.2f} €"
-    }
+    settings = crud.get_company_settings(db)
+    context = build_invoice_context(invoice, settings)
 
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "invoice_template.docx")
     template_path = os.path.abspath(template_path)
@@ -314,6 +542,7 @@ def generate_document(doc: schemas.DocumentGenerate, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="Template not found")
 
     docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
     docx.render(context)
 
     output_dir = os.path.join(os.path.dirname(__file__), "..", "output")
@@ -341,7 +570,7 @@ def download_offer_pdf(offer_number: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Offer not found")
 
     # Render the DOCX file
-    docx_path = render_offer_docx(offer)
+    docx_path = render_offer_docx(offer, db)
     if not os.path.exists(docx_path):
         raise HTTPException(status_code=500, detail="Failed to generate DOCX file.")
 
@@ -367,7 +596,7 @@ def download_invoice_pdf(invoice_number: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Invoice not found")
 
     # Render the DOCX file
-    docx_path = render_invoice_docx(invoice)
+    docx_path = render_invoice_docx(invoice, db)
     if not os.path.exists(docx_path):
         raise HTTPException(status_code=500, detail="Failed to generate DOCX file.")
 
@@ -392,40 +621,8 @@ def generate_offer_document(doc: schemas.DocumentGenerateOffer, db: Session = De
     if not offer:
         raise HTTPException(status_code=404, detail="Offer not found")
     
-    items = offer.items
-    total_netto = offer.total_amount
-    mwst = total_netto * 0.19
-    total_brutto = total_netto + mwst
-    context = {
-        "customer": {
-            "name": offer.customer.name,
-            "firma": offer.customer.firma or "",
-            "adresse": offer.customer.adresse,
-            "plz": offer.customer.plz,
-            "ort": offer.customer.ort,
-            "email": offer.customer.email or "",
-            "telefon": offer.customer.telefon or ""
-        },
-        "offer": {
-            "number": offer.offer_number,
-            "date": offer.date.strftime("%d.%m.%Y"),
-            "valid_until": offer.valid_until.strftime("%d.%m.%Y") if offer.valid_until and hasattr(offer.valid_until, 'strftime') else (str(offer.valid_until) if offer.valid_until else ""),
-            "total_netto": f"{total_netto:.2f} €",
-            "mwst": f"{mwst:.2f} €",
-            "total_brutto": f"{total_brutto:.2f} €"
-        },
-        "items": [
-            {
-                "description": item.description,
-                "quantity": item.quantity,
-                "unit_price": f"{item.unit_price:.2f} €",
-                "total_price": f"{item.total_price:.2f} €"
-            } for item in items
-        ],
-        "total_netto": f"{total_netto:.2f} €",
-        "mwst": f"{mwst:.2f} €",
-        "total_brutto": f"{total_brutto:.2f} €"
-    }
+    settings = crud.get_company_settings(db)
+    context = build_offer_context(offer, settings)
 
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "offer_template.docx")
     template_path = os.path.abspath(template_path)
@@ -433,6 +630,7 @@ def generate_offer_document(doc: schemas.DocumentGenerateOffer, db: Session = De
         raise HTTPException(status_code=404, detail="Offer template not found")
 
     docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
     docx.render(context)
 
     output_dir = os.path.join(os.path.dirname(__file__), "..", "output")
@@ -485,22 +683,8 @@ def generate_letter_document(doc: schemas.DocumentGenerateLetter, db: Session = 
     if not letter:
         raise HTTPException(status_code=404, detail="Letter not found")
     
-    context = {
-        "customer": {
-            "name": letter.customer.name,
-            "firma": letter.customer.firma or "",
-            "adresse": letter.customer.adresse,
-            "plz": letter.customer.plz,
-            "ort": letter.customer.ort,
-            "email": letter.customer.email or "",
-            "telefon": letter.customer.telefon or ""
-        },
-        "letter": {
-            "subject": letter.subject,
-            "content": letter.content,
-            "date": letter.date.strftime("%d.%m.%Y")
-        }
-    }
+    settings = crud.get_company_settings(db)
+    context = build_letter_context(letter, settings)
 
     template_path = os.path.join(os.path.dirname(__file__), "..", "templates", "docx", "briefvorlage.docx")
     template_path = os.path.abspath(template_path)
@@ -508,6 +692,7 @@ def generate_letter_document(doc: schemas.DocumentGenerateLetter, db: Session = 
         raise HTTPException(status_code=404, detail="Letter template not found")
 
     docx = DocxTemplate(template_path)
+    apply_logo_to_context(docx, context)
     docx.render(context)
 
     output_dir = os.path.join(os.path.dirname(__file__), "..", "output")

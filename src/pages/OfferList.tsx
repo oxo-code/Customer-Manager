@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getOffers } from '../services/api';
+import { useLanguage } from '../i18n';
+import { deleteOffer, getOffers, updateOfferStatus } from '../services/api';
 import { Offer } from '../types/api';
 
 const OfferList: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
+  const { t } = useLanguage();
 
   useEffect(() => {
     loadOffers();
@@ -19,6 +21,26 @@ const OfferList: React.FC = () => {
     }
   };
 
+  const finalizeOffer = async (offerId: number) => {
+    try {
+      await updateOfferStatus(offerId, 'final');
+      await loadOffers();
+    } catch (error) {
+      console.error('Error finalizing offer:', error);
+      alert(t('The offer could not be finalized.', 'Angebot konnte nicht finalisiert werden.'));
+    }
+  };
+
+  const removeOffer = async (offerId: number) => {
+    try {
+      await deleteOffer(offerId);
+      await loadOffers();
+    } catch (error) {
+      console.error('Error deleting offer:', error);
+      alert(t('The offer could not be deleted.', 'Angebot konnte nicht gelöscht werden.'));
+    }
+  };
+
   const sharePdf = async (url: string, filename: string) => {
     const nav = navigator as any;
     const absoluteUrl = new URL(url, window.location.origin).toString();
@@ -26,7 +48,7 @@ const OfferList: React.FC = () => {
 
     try {
       if (nav.share && isIos) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -41,7 +63,7 @@ const OfferList: React.FC = () => {
       }
 
       if (nav.share) {
-        await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -56,13 +78,13 @@ const OfferList: React.FC = () => {
       console.error('Share failed', error);
       if (nav.share) {
         try {
-          await nav.share({ url: absoluteUrl, title: filename, text: 'PDF teilen' });
+          await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
           return;
         } catch {
           // fallback to download
         }
       }
-      alert('Teilen fehlgeschlagen. Die PDF wird heruntergeladen.');
+      alert(t('Sharing failed. The PDF will be downloaded instead.', 'Teilen fehlgeschlagen. Die PDF wird heruntergeladen.'));
       const link = document.createElement('a');
       link.href = absoluteUrl;
       link.download = filename;
@@ -76,12 +98,12 @@ const OfferList: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Offers</p>
-          <h1 className="page-title">Angebote</h1>
-          <p className="page-copy">Übersicht deiner Angebote mit Status, Betrag und Kundenzuordnung.</p>
+          <p className="eyebrow">{t('Offers', 'Angebote')}</p>
+          <h1 className="page-title">{t('Offers', 'Angebote')}</h1>
+          <p className="page-copy">{t('Overview of your offers with status, amount, and customer assignment.', 'Übersicht deiner Angebote mit Status, Betrag und Kundenzuordnung.')}</p>
         </div>
         <Link to="/offers/new" className="btn btn-primary">
-          Neues Angebot
+          {t('New offer', 'Neues Angebot')}
         </Link>
       </div>
 
@@ -90,12 +112,12 @@ const OfferList: React.FC = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Angebotsnr.</th>
-                <th>Kunde</th>
-                <th>Datum</th>
-                <th>Betrag</th>
-                <th>Status</th>
-                <th>Download</th>
+                <th>{t('Offer No.', 'Angebotsnr.')}</th>
+                <th>{t('Customer', 'Kunde')}</th>
+                <th>{t('Date', 'Datum')}</th>
+                <th>{t('Amount', 'Betrag')}</th>
+                <th>{t('Status', 'Status')}</th>
+                <th>{t('Download', 'Download')}</th>
               </tr>
             </thead>
             <tbody>
@@ -111,13 +133,31 @@ const OfferList: React.FC = () => {
                     </span>
                   </td>
                   <td className="button-group">
+                    {offer.status === 'draft' && (
+                      <>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-small"
+                          onClick={() => finalizeOffer(offer.id)}
+                        >
+                          {t('Final', 'Final')}
+                        </button>
+                        <button
+                          type="button"
+                          className="btn btn-danger btn-small"
+                          onClick={() => removeOffer(offer.id)}
+                        >
+                          {t('Delete', 'Löschen')}
+                        </button>
+                      </>
+                    )}
                     <a
                       href={`/api/documents/download-offer/${offer.offer_number}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small"
                     >
-                      Download Word
+                      {t('Download Word', 'Word herunterladen')}
                     </a>
                     <a
                       href={`/api/documents/download-offer-pdf/${offer.offer_number}`}
@@ -125,14 +165,14 @@ const OfferList: React.FC = () => {
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small hide-on-mobile"
                     >
-                      Direktlink
+                      {t('Direct link', 'Direktlink')}
                     </a>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
                       onClick={() => sharePdf(`/api/documents/download-offer-pdf/${offer.offer_number}`, `${offer.offer_number}.pdf`)}
                     >
-                      Teilen
+                      {t('Share', 'Teilen')}
                     </button>
                   </td>
                 </tr>

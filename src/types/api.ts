@@ -68,3 +68,23 @@ export interface Article {
   default_price: number;
   created_at: string;
 }
+
+export interface CompanySettings {
+  id: number;
+  company_name: string;
+  full_name?: string;
+  street?: string;
+  postal_code?: string;
+  city?: string;
+  country?: string;
+  email?: string;
+  phone?: string;
+  tax_number?: string;
+  vat_id?: string;
+  bank_name?: string;
+  iban?: string;
+  bic?: string;
+  logo_path?: string;
+  dark_logo_path?: string;
+  document_logo_path?: string;
+}

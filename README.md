@@ -8,18 +8,21 @@ A web application for managing customers and generating invoices.
 
 1. Install Python 3.8+ from https://python.org
 2. Install dependencies: `pip install -r backend/requirements.txt`
-3. Run the backend: `uvicorn backend.main:app --reload`
+3. For PDF generation, install LibreOffice and ensure its program directory is in `PATH` (`libreoffice` on Linux; usually `soffice.exe` on Windows).
+4. Run the backend: `python -m uvicorn backend.main:app --reload`
 
 ### Frontend
 
 1. Install Node.js from https://nodejs.org
 2. Install dependencies: `npm install`
-3. Run the frontend: `npm run dev`
+3. Run the app in development mode: `npm run dev`
+4. Run the app in production-style preview mode: `npm run prod`
 
 ## Usage
 
-- Access the app at http://localhost:5173
-- Backend API at http://localhost:8000
+- Frontend dev server: http://127.0.0.1:5173
+- Frontend production preview: http://127.0.0.1:4173
+- Backend API: http://127.0.0.1:8001
 
 ## Features
 

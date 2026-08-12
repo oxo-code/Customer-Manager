@@ -97,3 +97,24 @@ class Letter(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     customer = relationship("Customer")
+
+class CompanySettings(Base):
+    __tablename__ = "company_settings"
+
+    id = Column(Integer, primary_key=True)
+    company_name = Column(String, default="Customer Manager")
+    full_name = Column(String, nullable=True)
+    street = Column(String, nullable=True)
+    postal_code = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    email = Column(String, nullable=True)
+    phone = Column(String, nullable=True)
+    tax_number = Column(String, nullable=True)
+    vat_id = Column(String, nullable=True)
+    bank_name = Column(String, nullable=True)
+    iban = Column(String, nullable=True)
+    bic = Column(String, nullable=True)
+    logo_path = Column(String, nullable=True)
+    dark_logo_path = Column(String, nullable=True)
+    document_logo_path = Column(String, nullable=True)

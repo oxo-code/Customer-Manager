@@ -2,6 +2,30 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from . import models, schemas
 
+def get_company_settings(db: Session):
+    return db.query(models.CompanySettings).first()
+
+def update_company_settings(db: Session, settings: schemas.CompanySettingsUpdate):
+    db_settings = get_company_settings(db)
+    if not db_settings:
+        db_settings = models.CompanySettings()
+        db.add(db_settings)
+    for key, value in settings.dict().items():
+        setattr(db_settings, key, value)
+    db.commit()
+    db.refresh(db_settings)
+    return db_settings
+
+def update_company_logo(db: Session, logo_path: str, field_name: str = "logo_path"):
+    db_settings = get_company_settings(db)
+    if not db_settings:
+        db_settings = models.CompanySettings()
+        db.add(db_settings)
+    setattr(db_settings, field_name, logo_path)
+    db.commit()
+    db.refresh(db_settings)
+    return db_settings
+
 def get_customers(db: Session, skip: int = 0, limit: int = 100):
     return db.query(models.Customer).offset(skip).limit(limit).all()
 
@@ -30,6 +54,49 @@ def delete_customer(db: Session, customer_id: int):
         db.delete(db_customer)
         db.commit()
     return db_customer
+
+
+def update_invoice_status(db: Session, invoice_id: int, status: str):
+    if status not in {"draft", "final"}:
+        raise ValueError("Status must be either 'draft' or 'final'.")
+    db_invoice = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
+    if db_invoice is None:
+        return None
+    db_invoice.status = status
+    db.commit()
+    db.refresh(db_invoice)
+    return db_invoice
+
+
+def delete_invoice(db: Session, invoice_id: int):
+    db_invoice = db.query(models.Invoice).filter(models.Invoice.id == invoice_id).first()
+    if db_invoice is None:
+        return None
+    db.delete(db_invoice)
+    db.commit()
+    return db_invoice
+
+
+def update_offer_status(db: Session, offer_id: int, status: str):
+    if status not in {"draft", "final"}:
+        raise ValueError("Status must be either 'draft' or 'final'.")
+    db_offer = db.query(models.Offer).filter(models.Offer.id == offer_id).first()
+    if db_offer is None:
+        return None
+    db_offer.status = status
+    db.commit()
+    db.refresh(db_offer)
+    return db_offer
+
+
+def delete_offer(db: Session, offer_id: int):
+    db_offer = db.query(models.Offer).filter(models.Offer.id == offer_id).first()
+    if db_offer is None:
+        return None
+    db.delete(db_offer)
+    db.commit()
+    return db_offer
+
 
 def get_next_invoice_number(db: Session):
     counter = db.query(models.Counter).filter(models.Counter.name == "invoice").with_for_update().first()

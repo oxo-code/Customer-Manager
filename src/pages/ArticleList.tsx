@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useLanguage } from '../i18n';
 import { getArticles, deleteArticle } from '../services/api';
 import { Article } from '../types/api';
 
 const ArticleList: React.FC = () => {
   const [articles, setArticles] = useState<Article[]>([]);
+  const { t } = useLanguage();
 
   useEffect(() => {
     loadArticles();
@@ -20,7 +22,7 @@ const ArticleList: React.FC = () => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!confirm('Artikel wirklich löschen?')) return;
+    if (!confirm(t('Delete this article?', 'Artikel wirklich löschen?'))) return;
     try {
       await deleteArticle(id);
       setArticles(articles.filter(a => a.id !== id));
@@ -33,12 +35,12 @@ const ArticleList: React.FC = () => {
     <main className="page-shell">
       <div className="page-header">
         <div>
-          <p className="eyebrow">Artikel</p>
-          <h1 className="page-title">Artikelstamm</h1>
-          <p className="page-copy">Verwalte deine Artikel mit Standardmenge und Standardpreis.</p>
+          <p className="eyebrow">{t('Articles', 'Artikel')}</p>
+          <h1 className="page-title">{t('Article master data', 'Artikelstamm')}</h1>
+          <p className="page-copy">{t('Manage articles with default quantity and default price.', 'Verwalte deine Artikel mit Standardmenge und Standardpreis.')}</p>
         </div>
         <Link to="/articles/new" className="btn btn-primary">
-          Neuer Artikel
+          {t('New article', 'Neuer Artikel')}
         </Link>
       </div>
 
@@ -47,11 +49,11 @@ const ArticleList: React.FC = () => {
           <table className="data-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Beschreibung</th>
-                <th>Standardmenge</th>
-                <th>Standardpreis</th>
-                <th>Aktionen</th>
+                <th>{t('Name', 'Name')}</th>
+                <th>{t('Description', 'Beschreibung')}</th>
+                <th>{t('Default quantity', 'Standardmenge')}</th>
+                <th>{t('Default price', 'Standardpreis')}</th>
+                <th>{t('Actions', 'Aktionen')}</th>
               </tr>
             </thead>
             <tbody>
@@ -63,14 +65,14 @@ const ArticleList: React.FC = () => {
                   <td>{article.default_price.toFixed(2)} €</td>
                   <td className="button-group">
                     <Link to={`/articles/${article.id}/edit`} className="btn btn-secondary btn-small">
-                      Bearbeiten
+                      {t('Edit', 'Bearbeiten')}
                     </Link>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
                       onClick={() => handleDelete(article.id)}
                     >
-                      Löschen
+                      {t('Delete', 'Löschen')}
                     </button>
                   </td>
                 </tr>
