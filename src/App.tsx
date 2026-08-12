@@ -12,7 +12,8 @@ import LetterForm from './pages/LetterForm';
 import ArticleList from './pages/ArticleList';
 import ArticleForm from './pages/ArticleForm';
 import SettingsPage from './pages/SettingsPage';
-import { getCompanySettings } from './services/api';
+import AuthPage from './pages/AuthPage';
+import { clearAuthToken, getAuthToken, getCompanySettings, getCurrentUser, getRefreshToken, logoutUser } from './services/api';
 import { useLanguage } from './i18n';
 
 const App: React.FC = () => {
@@ -23,6 +24,28 @@ const App: React.FC = () => {
   const [logoPath, setLogoPath] = useState<string>();
   const [darkLogoPath, setDarkLogoPath] = useState<string>();
   const [isLightMode, setIsLightMode] = useState(() => localStorage.getItem('theme') === 'light');
+  const [authReady, setAuthReady] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  useEffect(() => {
+    const token = getAuthToken();
+    if (!token) {
+      setAuthReady(true);
+      return;
+    }
+
+    getCurrentUser()
+      .then(() => {
+        setIsAuthenticated(true);
+      })
+      .catch(() => {
+        clearAuthToken();
+        setIsAuthenticated(false);
+      })
+      .finally(() => {
+        setAuthReady(true);
+      });
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = isLightMode ? 'light' : 'dark';
@@ -30,12 +53,41 @@ const App: React.FC = () => {
   }, [isLightMode]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
     getCompanySettings().then(({ data }) => {
       setCompanyName(data.company_name || 'Customer Manager');
       setLogoPath(data.logo_path);
       setDarkLogoPath(data.dark_logo_path);
     }).catch(() => undefined);
-  }, [location.pathname]);
+  }, [isAuthenticated, location.pathname]);
+
+  if (!authReady) {
+    return (
+      <main className="page-shell">
+        <div className="card" style={{ maxWidth: 420, margin: '3rem auto' }}>
+          <p className="page-copy">{t('Loading authentication...', 'Lade Authentifizierung...')}</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <AuthPage onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+
+  const logout = async () => {
+    const refreshToken = getRefreshToken();
+    if (refreshToken) {
+      try {
+        await logoutUser(refreshToken);
+      } catch {
+        // Ignore logout errors and clear local tokens anyway.
+      }
+    }
+    clearAuthToken();
+    setIsAuthenticated(false);
+  };
 
   return (
     <div className={`app-root${isHome ? ' app-root--home' : ''}`}>
@@ -63,6 +115,9 @@ const App: React.FC = () => {
             <NavLink to="/settings" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
               {t('Settings', 'Einstellungen')}
             </NavLink>
+            <button type="button" className="btn btn-secondary btn-small" onClick={logout}>
+              {t('Logout', 'Abmelden')}
+            </button>
             <button
               type="button"
               className="lang-toggle"

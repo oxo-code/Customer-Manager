@@ -88,3 +88,20 @@ export interface CompanySettings {
   dark_logo_path?: string;
   document_logo_path?: string;
 }
+
+export interface AuthBootstrap {
+  setup_required: boolean;
+}
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  role: 'admin' | 'user';
+}
+
+export interface AuthTokenResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: 'bearer';
+  user: AuthUser;
+}

@@ -155,3 +155,38 @@ class CompanySettings(CompanySettingsBase):
 
     class Config:
         from_attributes = True
+
+
+class AuthBootstrap(BaseModel):
+    setup_required: bool
+
+
+class AuthCredentials(BaseModel):
+    username: str
+    password: str
+
+
+class AuthUser(BaseModel):
+    id: int
+    username: str
+    role: str
+
+    class Config:
+        from_attributes = True
+
+
+class AuthTokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: AuthUser
+
+
+class AuthCreateUser(BaseModel):
+    username: str
+    password: str
+    role: str
+
+
+class AuthRefreshRequest(BaseModel):
+    refresh_token: str

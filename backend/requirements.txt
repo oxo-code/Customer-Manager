@@ -7,3 +7,5 @@ python-multipart
 pydantic
 pydantic-settings
 docx2pdf
+passlib[bcrypt]
+python-jose[cryptography]

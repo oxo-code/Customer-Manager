@@ -8,7 +8,7 @@ A web application for managing customers and generating invoices.
 
 1. Install Python 3.8+ from https://python.org
 2. Install dependencies: `pip install -r backend/requirements.txt`
-3. For PDF generation, install LibreOffice and ensure its program directory is in `PATH` (`libreoffice` on Linux; usually `soffice.exe` on Windows).
+3. For PDF generation, install Microsoft Word (docx2pdf uses Word on Windows).
 4. Run the backend: `python -m uvicorn backend.main:app --reload`
 
 ### Frontend
@@ -23,6 +23,13 @@ A web application for managing customers and generating invoices.
 - Frontend dev server: http://127.0.0.1:5173
 - Frontend production preview: http://127.0.0.1:4173
 - Backend API: http://127.0.0.1:8001
+
+## Authentication
+
+- On first app start, create the initial admin account in the login screen.
+- Session uses access + refresh tokens.
+- Reset a password locally with one command:
+	- `npm run reset-password -- --username <username> --password <new-password>`
 
 ## Features
 

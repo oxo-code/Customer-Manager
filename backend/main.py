@@ -1,17 +1,21 @@
-from fastapi import FastAPI, Depends, File, HTTPException, UploadFile
+from fastapi import FastAPI, Depends, File, HTTPException, UploadFile, Request
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 import os
 import shutil
 import threading
+import hashlib
 from uuid import uuid4
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 from docx2pdf import convert
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from jose import jwt, JWTError
+from passlib.context import CryptContext
 from . import crud, models, schemas
 from .database import SessionLocal, engine
 from .models import Customer, Invoice, InvoiceItem, Counter
@@ -27,8 +31,22 @@ with engine.begin() as connection:
     if "document_logo_path" not in columns:
         connection.execute(text("ALTER TABLE company_settings ADD COLUMN document_logo_path VARCHAR"))
 
+    user_table_exists = connection.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    ).fetchone()
+    if user_table_exists:
+        user_columns = {column[1] for column in connection.execute(text("PRAGMA table_info(users)"))}
+        if "role" not in user_columns:
+            connection.execute(text("ALTER TABLE users ADD COLUMN role VARCHAR DEFAULT 'user'"))
+            connection.execute(text("UPDATE users SET role='admin' WHERE role IS NULL OR role=''"))
+
 app = FastAPI(title="Customer Manager API")
 PDF_CONVERSION_LOCK = threading.Lock()
+SECRET_KEY = os.getenv("AUTH_SECRET_KEY", "change-this-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 20
+REFRESH_TOKEN_EXPIRE_DAYS = 14
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
 UPLOADS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "uploads"))
 os.makedirs(UPLOADS_DIR, exist_ok=True)
@@ -53,6 +71,150 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return pwd_context.verify(password, password_hash)
+
+
+def create_access_token(user_id: int, username: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "type": "access",
+        "exp": expire,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def create_refresh_token(user_id: int, username: str) -> str:
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    payload = {
+        "sub": str(user_id),
+        "username": username,
+        "type": "refresh",
+        "exp": expire,
+        "jti": uuid4().hex,
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def store_refresh_token(db: Session, user_id: int, refresh_token: str):
+    token_hash = hash_refresh_token(refresh_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    refresh_entry = models.RefreshToken(user_id=user_id, token_hash=token_hash, expires_at=expires_at)
+    db.add(refresh_entry)
+    db.commit()
+
+
+def revoke_refresh_token(db: Session, refresh_token: str):
+    token_hash = hash_refresh_token(refresh_token)
+    entry = db.query(models.RefreshToken).filter(models.RefreshToken.token_hash == token_hash).first()
+    if entry and entry.revoked_at is None:
+        entry.revoked_at = datetime.now(timezone.utc)
+        db.commit()
+
+
+def issue_auth_tokens(db: Session, user):
+    access_token = create_access_token(user.id, user.username)
+    refresh_token = create_refresh_token(user.id, user.username)
+    store_refresh_token(db, user.id, refresh_token)
+    return schemas.AuthTokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user=schemas.AuthUser.model_validate(user),
+    )
+
+
+def get_user_from_token(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "access":
+            return None
+        user_id = int(payload.get("sub", "0"))
+    except (JWTError, ValueError):
+        return None
+
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+
+def get_user_from_refresh_token(token: str, db: Session):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        if payload.get("type") != "refresh":
+            return None
+        user_id = int(payload.get("sub", "0"))
+    except (JWTError, ValueError):
+        return None
+
+    token_hash = hash_refresh_token(token)
+    refresh_entry = db.query(models.RefreshToken).filter(models.RefreshToken.token_hash == token_hash).first()
+    if refresh_entry is None:
+        return None
+    if refresh_entry.revoked_at is not None:
+        return None
+    expires_at = refresh_entry.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at <= datetime.now(timezone.utc):
+        return None
+
+    return db.query(models.User).filter(models.User.id == user_id).first()
+
+
+def require_admin(request: Request):
+    if getattr(request.state, "user_role", "") != "admin":
+        raise HTTPException(status_code=403, detail="Admin privileges required.")
+
+
+@app.middleware("http")
+async def auth_middleware(request: Request, call_next):
+    path = request.url.path
+
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
+    is_api = path.startswith("/api")
+    is_public_auth = path in {
+        "/api/auth/bootstrap",
+        "/api/auth/login",
+        "/api/auth/register-first",
+        "/api/auth/refresh",
+    }
+    is_upload = path.startswith("/api/uploads")
+
+    if not is_api or is_public_auth or is_upload:
+        return await call_next(request)
+
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Bearer "):
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return JSONResponse(status_code=401, content={"detail": "Not authenticated"})
+
+    db = SessionLocal()
+    try:
+        user = get_user_from_token(token, db)
+        if user is None:
+            return JSONResponse(status_code=401, content={"detail": "Invalid token"})
+        request.state.user_id = user.id
+        request.state.username = user.username
+        request.state.user_role = user.role
+    finally:
+        db.close()
+
+    return await call_next(request)
 
 
 def get_output_dir():
@@ -366,6 +528,94 @@ def render_letter_docx(letter, db: Session | None = None):
     output_path = os.path.join(output_dir, f"letter_{letter.id}.docx")
     docx.save(output_path)
     return output_path
+
+
+@app.get("/api/auth/bootstrap", response_model=schemas.AuthBootstrap)
+def auth_bootstrap(db: Session = Depends(get_db)):
+    user_count = db.query(models.User).count()
+    return schemas.AuthBootstrap(setup_required=user_count == 0)
+
+
+@app.post("/api/auth/register-first", response_model=schemas.AuthTokenResponse)
+def register_first_user(credentials: schemas.AuthCredentials, db: Session = Depends(get_db)):
+    if db.query(models.User).count() > 0:
+        raise HTTPException(status_code=403, detail="Initial setup already completed.")
+
+    username = credentials.username.strip()
+    if len(username) < 3 or len(credentials.password) < 8:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters and password at least 8 characters.")
+
+    user = models.User(username=username, password_hash=hash_password(credentials.password), role="admin")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    return issue_auth_tokens(db, user)
+
+
+@app.post("/api/auth/login", response_model=schemas.AuthTokenResponse)
+def login(credentials: schemas.AuthCredentials, db: Session = Depends(get_db)):
+    username = credentials.username.strip()
+    user = db.query(models.User).filter(models.User.username == username).first()
+    if user is None or not verify_password(credentials.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password.")
+
+    return issue_auth_tokens(db, user)
+
+
+@app.post("/api/auth/refresh", response_model=schemas.AuthTokenResponse)
+def refresh_auth_token(payload: schemas.AuthRefreshRequest, db: Session = Depends(get_db)):
+    user = get_user_from_refresh_token(payload.refresh_token, db)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid refresh token.")
+
+    revoke_refresh_token(db, payload.refresh_token)
+    return issue_auth_tokens(db, user)
+
+
+@app.post("/api/auth/logout")
+def logout(payload: schemas.AuthRefreshRequest, request: Request, db: Session = Depends(get_db)):
+    if getattr(request.state, "user_id", None) is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    revoke_refresh_token(db, payload.refresh_token)
+    return {"message": "Logged out"}
+
+
+@app.post("/api/auth/users", response_model=schemas.AuthUser)
+def create_user(payload: schemas.AuthCreateUser, request: Request, db: Session = Depends(get_db)):
+    require_admin(request)
+
+    role = payload.role.strip().lower()
+    if role not in {"admin", "user"}:
+        raise HTTPException(status_code=400, detail="Role must be 'admin' or 'user'.")
+
+    username = payload.username.strip()
+    if len(username) < 3 or len(payload.password) < 8:
+        raise HTTPException(status_code=400, detail="Username must be at least 3 characters and password at least 8 characters.")
+
+    exists = db.query(models.User).filter(models.User.username == username).first()
+    if exists is not None:
+        raise HTTPException(status_code=409, detail="Username already exists.")
+
+    user = models.User(username=username, password_hash=hash_password(payload.password), role=role)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return schemas.AuthUser.model_validate(user)
+
+
+@app.get("/api/auth/me", response_model=schemas.AuthUser)
+def auth_me(request: Request, db: Session = Depends(get_db)):
+    user_id = getattr(request.state, "user_id", None)
+    if user_id is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user = db.query(models.User).filter(models.User.id == user_id).first()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    return schemas.AuthUser.model_validate(user)
 
 @app.get("/api/settings", response_model=schemas.CompanySettings)
 def read_company_settings(db: Session = Depends(get_db)):

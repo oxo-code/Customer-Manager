@@ -9,6 +9,7 @@
     "preview": "vite preview --host 127.0.0.1 --port 4173",
     "preprod": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/free-ports.ps1 4173 8001",
     "prod": "npm run build && concurrently -k \"python -m uvicorn backend.main:app --host 127.0.0.1 --port 8001\" \"vite preview --host 127.0.0.1 --port 4173\"",
+    "reset-password": "python -m backend.reset_password",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage"
