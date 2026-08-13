@@ -224,6 +224,23 @@ def _company_data(settings: Optional[models.CompanySettings]) -> dict:
 
 def build_invoice_context(invoice: models.Invoice, settings: Optional[models.CompanySettings]) -> dict:
     customer = invoice.customer
+    normalized_items = [
+        {
+            "description": item.description,
+            "quantity": item.quantity,
+            "unit_price": item.unit_price,
+            "total_price": item.total_price,
+        }
+        for item in invoice.items
+    ]
+
+    fallback_item = normalized_items[0] if normalized_items else {
+        "description": "",
+        "quantity": 0,
+        "unit_price": 0,
+        "total_price": 0,
+    }
+
     total_netto = float(sum((item.total_price or 0.0) for item in invoice.items))
     vat_rate = 0.19
     total_brutto = total_netto * (1.0 + vat_rate)
@@ -244,15 +261,9 @@ def build_invoice_context(invoice: models.Invoice, settings: Optional[models.Com
         "customer_city": customer.ort,
         "invoice_number": invoice.invoice_number,
         "invoice_date": date_str,
-        "items": [
-            {
-                "description": item.description,
-                "quantity": item.quantity,
-                "unit_price": item.unit_price,
-                "total_price": item.total_price,
-            }
-            for item in invoice.items
-        ],
+        "items": normalized_items,
+        # Fallback for templates that reference {{ item.* }} without a loop block.
+        "item": fallback_item,
         "total_amount": invoice.total_amount,
         "total_netto": round(total_netto, 2),
         "mwst": round(vat_rate * 100, 2),
