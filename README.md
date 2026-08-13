@@ -9,12 +9,7 @@ A web application for managing customers and generating invoices.
 1. Install Python 3.8+ from https://python.org
 2. Install dependencies: `pip install -r backend/requirements.txt`
 3. For PDF generation, install Microsoft Word (docx2pdf uses Word on Windows).
-<<<<<<< HEAD
-4. Optional: set `AUTH_SECRET_KEY` and `CUSTOMER_MANAGER_DB_PATH` if you want custom local paths.
-5. Run the backend: `python -m uvicorn backend.main:app --reload`
-=======
 4. Run the backend publicly on all interfaces: `python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001`
->>>>>>> e25d22e (Backend serves Frontend Build)
 
 ### Frontend
 
