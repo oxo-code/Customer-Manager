@@ -9,21 +9,35 @@ A web application for managing customers and generating invoices.
 1. Install Python 3.8+ from https://python.org
 2. Install dependencies: `pip install -r backend/requirements.txt`
 3. For PDF generation, install Microsoft Word (docx2pdf uses Word on Windows).
+<<<<<<< HEAD
 4. Optional: set `AUTH_SECRET_KEY` and `CUSTOMER_MANAGER_DB_PATH` if you want custom local paths.
 5. Run the backend: `python -m uvicorn backend.main:app --reload`
+=======
+4. Run the backend publicly on all interfaces: `python -m uvicorn backend.main:app --host 0.0.0.0 --port 8001`
+>>>>>>> e25d22e (Backend serves Frontend Build)
 
 ### Frontend
 
 1. Install Node.js from https://nodejs.org
 2. Install dependencies: `npm install`
-3. Run the app in development mode: `npm run dev`
-4. Run the app in production-style preview mode: `npm run prod`
+3. Build the production frontend bundle: `npm run build`
+4. Run the app in development mode: `npm run dev`
+5. Run the app in production-style preview mode: `npm run prod`
+6. The Vite dev and preview servers are configured with `host: '0.0.0.0'` so they can be reached from outside localhost.
+
+## Production
+
+- Run the frontend build first: `npm run build`
+- The backend serves the built frontend from the `dist` folder on port `8001`.
+- In production, open the app via `http://<server-ip>:8001` instead of Vite's preview port.
+- The backend keeps the API routes under `/api` and serves the frontend at the root URL.
 
 ## Usage
 
 - Frontend dev server: http://127.0.0.1:5173
 - Frontend production preview: http://127.0.0.1:4173
-- Backend API: http://127.0.0.1:8001
+- Backend API / served frontend: http://127.0.0.1:8001
+- Public network access: http://<server-ip>:8001
 
 ## Authentication
 
