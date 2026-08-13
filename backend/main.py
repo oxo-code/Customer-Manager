@@ -9,6 +9,8 @@ from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from docx2pdf import convert
+from docxtpl import DocxTemplate
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
@@ -23,6 +25,7 @@ LOCAL_DIR = BASE_DIR / ".local"
 UPLOADS_DIR = BASE_DIR / "uploads"
 OUTPUT_DIR = PROJECT_ROOT / "output"
 DIST_DIR = PROJECT_ROOT / "dist"
+TEMPLATE_DIR = PROJECT_ROOT / "templates" / "docx"
 
 LOCAL_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
@@ -230,6 +233,77 @@ def build_invoice_context(invoice: models.Invoice, settings: Optional[models.Com
         ],
         "total_amount": invoice.total_amount,
     }
+
+
+def build_offer_context(offer: models.Offer, settings: Optional[models.CompanySettings]) -> dict:
+    customer = offer.customer
+    return {
+        "mandant": _company_data(settings),
+        "customer_name": customer.name,
+        "customer_company": customer.firma,
+        "customer_address": customer.adresse,
+        "customer_zip": customer.plz,
+        "customer_city": customer.ort,
+        "offer_number": offer.offer_number,
+        "offer_date": offer.date.strftime("%Y-%m-%d") if offer.date else "",
+        "valid_until": offer.valid_until.strftime("%Y-%m-%d") if offer.valid_until else "",
+        "items": [
+            {
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+                "total_price": item.total_price,
+            }
+            for item in offer.items
+        ],
+        "total_amount": offer.total_amount,
+    }
+
+
+def build_letter_context(letter: models.Letter, settings: Optional[models.CompanySettings]) -> dict:
+    customer = letter.customer
+    return {
+        "mandant": _company_data(settings),
+        "customer_name": customer.name,
+        "customer_company": customer.firma,
+        "customer_address": customer.adresse,
+        "customer_zip": customer.plz,
+        "customer_city": customer.ort,
+        "letter_id": letter.id,
+        "letter_date": letter.date.strftime("%Y-%m-%d") if letter.date else "",
+        "subject": letter.subject,
+        "content": letter.content,
+    }
+
+
+def _first_existing_template(candidates: list[str]) -> Path:
+    for name in candidates:
+        template = TEMPLATE_DIR / name
+        if template.exists():
+            return template
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No suitable template file found.")
+
+
+def _render_docx(template_path: Path, context: dict, output_filename: str) -> Path:
+    output_path = OUTPUT_DIR / output_filename
+    doc = DocxTemplate(str(template_path))
+    doc.render(context)
+    doc.save(str(output_path))
+    return output_path
+
+
+def _convert_docx_to_pdf(docx_path: Path) -> Path:
+    pdf_path = docx_path.with_suffix(".pdf")
+    try:
+        convert(str(docx_path), str(pdf_path))
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="PDF conversion failed. Ensure Microsoft Word is installed on Windows.",
+        ) from exc
+    if not pdf_path.exists():
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="PDF conversion produced no output file.")
+    return pdf_path
 
 
 app = FastAPI(title="Customer Manager API")
@@ -555,21 +629,14 @@ def generate_invoice_document(payload: schemas.DocumentGenerate, _: models.User 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
     settings = crud.get_company_settings(db)
     context = build_invoice_context(invoice, settings)
-
-    out_path = OUTPUT_DIR / f"invoice-{invoice.invoice_number}.txt"
-    out_lines = [
-        f"Invoice: {context['invoice_number']}",
-        f"Customer: {context['customer_name']}",
-        f"Date: {context['invoice_date']}",
-        "",
-        "Items:",
-    ]
-    for item in context["items"]:
-        out_lines.append(f"- {item['description']}: {item['quantity']} x {item['unit_price']} = {item['total_price']}")
-    out_lines.append("")
-    out_lines.append(f"Total: {context['total_amount']}")
-    out_path.write_text("\n".join(out_lines), encoding="utf-8")
-    return FileResponse(path=str(out_path), media_type="text/plain", filename=out_path.name)
+    template = _first_existing_template(["invoice_template.docx", "invoice_template_eng.docx"])
+    safe_number = _sanitize_filename(invoice.invoice_number)
+    out_path = _render_docx(template, context, f"invoice-{safe_number}.docx")
+    return FileResponse(
+        path=str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=out_path.name,
+    )
 
 
 @app.post("/api/documents/generate-offer")
@@ -578,20 +645,16 @@ def generate_offer_document(payload: schemas.DocumentGenerateOffer, _: models.Us
     if offer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
 
-    out_path = OUTPUT_DIR / f"offer-{offer.offer_number}.txt"
-    out_lines = [
-        f"Offer: {offer.offer_number}",
-        f"Customer: {offer.customer.name}",
-        f"Date: {offer.date.strftime('%Y-%m-%d') if offer.date else ''}",
-        "",
-        "Items:",
-    ]
-    for item in offer.items:
-        out_lines.append(f"- {item.description}: {item.quantity} x {item.unit_price} = {item.total_price}")
-    out_lines.append("")
-    out_lines.append(f"Total: {offer.total_amount}")
-    out_path.write_text("\n".join(out_lines), encoding="utf-8")
-    return FileResponse(path=str(out_path), media_type="text/plain", filename=out_path.name)
+    settings = crud.get_company_settings(db)
+    context = build_offer_context(offer, settings)
+    template = _first_existing_template(["offer_template.docx", "offer_template_eng.docx"])
+    safe_number = _sanitize_filename(offer.offer_number)
+    out_path = _render_docx(template, context, f"offer-{safe_number}.docx")
+    return FileResponse(
+        path=str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=out_path.name,
+    )
 
 
 @app.post("/api/documents/generate-letter")
@@ -600,16 +663,95 @@ def generate_letter_document(payload: schemas.DocumentGenerateLetter, _: models.
     if letter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Letter not found.")
 
-    out_path = OUTPUT_DIR / f"letter-{letter.id}.txt"
-    out_lines = [
-        f"Subject: {letter.subject}",
-        f"Customer: {letter.customer.name}",
-        f"Date: {letter.date.strftime('%Y-%m-%d') if letter.date else ''}",
-        "",
-        letter.content,
-    ]
-    out_path.write_text("\n".join(out_lines), encoding="utf-8")
-    return FileResponse(path=str(out_path), media_type="text/plain", filename=out_path.name)
+    settings = crud.get_company_settings(db)
+    context = build_letter_context(letter, settings)
+    template = _first_existing_template(["letter_template.docx", "letter_template_eng.docx", "briefvorlage.docx"])
+    out_path = _render_docx(template, context, f"letter-{letter.id}.docx")
+    return FileResponse(
+        path=str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=out_path.name,
+    )
+
+
+@app.get("/api/documents/download/{invoice_number}")
+def download_invoice_docx(invoice_number: str, db: Session = Depends(get_db)):
+    invoice = crud.get_invoice_by_number(db, invoice_number)
+    if invoice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+    settings = crud.get_company_settings(db)
+    context = build_invoice_context(invoice, settings)
+    template = _first_existing_template(["invoice_template.docx", "invoice_template_eng.docx"])
+    safe_number = _sanitize_filename(invoice.invoice_number)
+    out_path = _render_docx(template, context, f"invoice-{safe_number}.docx")
+    return FileResponse(
+        path=str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=out_path.name,
+    )
+
+
+@app.get("/api/documents/download-pdf/{invoice_number}")
+def download_invoice_pdf(invoice_number: str, db: Session = Depends(get_db)):
+    invoice = crud.get_invoice_by_number(db, invoice_number)
+    if invoice is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+
+    settings = crud.get_company_settings(db)
+    context = build_invoice_context(invoice, settings)
+    template = _first_existing_template(["invoice_template.docx", "invoice_template_eng.docx"])
+    safe_number = _sanitize_filename(invoice.invoice_number)
+    docx_path = _render_docx(template, context, f"invoice-{safe_number}.docx")
+    pdf_path = _convert_docx_to_pdf(docx_path)
+    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+
+
+@app.get("/api/documents/download-offer/{offer_number}")
+def download_offer_docx(offer_number: str, db: Session = Depends(get_db)):
+    offer = crud.get_offer_by_number(db, offer_number)
+    if offer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
+
+    settings = crud.get_company_settings(db)
+    context = build_offer_context(offer, settings)
+    template = _first_existing_template(["offer_template.docx", "offer_template_eng.docx"])
+    safe_number = _sanitize_filename(offer.offer_number)
+    out_path = _render_docx(template, context, f"offer-{safe_number}.docx")
+    return FileResponse(
+        path=str(out_path),
+        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        filename=out_path.name,
+    )
+
+
+@app.get("/api/documents/download-offer-pdf/{offer_number}")
+def download_offer_pdf(offer_number: str, db: Session = Depends(get_db)):
+    offer = crud.get_offer_by_number(db, offer_number)
+    if offer is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
+
+    settings = crud.get_company_settings(db)
+    context = build_offer_context(offer, settings)
+    template = _first_existing_template(["offer_template.docx", "offer_template_eng.docx"])
+    safe_number = _sanitize_filename(offer.offer_number)
+    docx_path = _render_docx(template, context, f"offer-{safe_number}.docx")
+    pdf_path = _convert_docx_to_pdf(docx_path)
+    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+
+
+@app.get("/api/documents/download-letter-pdf/{letter_id}")
+def download_letter_pdf(letter_id: int, db: Session = Depends(get_db)):
+    letter = crud.get_letter(db, letter_id)
+    if letter is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Letter not found.")
+
+    settings = crud.get_company_settings(db)
+    context = build_letter_context(letter, settings)
+    template = _first_existing_template(["letter_template.docx", "letter_template_eng.docx", "briefvorlage.docx"])
+    docx_path = _render_docx(template, context, f"letter-{letter.id}.docx")
+    pdf_path = _convert_docx_to_pdf(docx_path)
+    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
 
 
 @app.get("/api/uploads/{filename}")
