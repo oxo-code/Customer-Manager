@@ -7,7 +7,7 @@ import { Invoice } from '../types/api';
 
 const InvoiceList: React.FC = () => {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   useEffect(() => {
     loadInvoices();
@@ -153,7 +153,7 @@ const InvoiceList: React.FC = () => {
                       </>
                     )}
                     <a
-                      href={resolveApiUrl(`/api/documents/download/${invoice.invoice_number}`)}
+                      href={resolveApiUrl(`/api/documents/download/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action"
@@ -163,12 +163,12 @@ const InvoiceList: React.FC = () => {
                     <button
                       type="button"
                       className="btn btn-secondary btn-small btn-doc-action"
-                      onClick={() => sharePdf(`/api/documents/download-pdf/${invoice.invoice_number}`, `${invoice.invoice_number}.pdf`)}
+                      onClick={() => sharePdf(`/api/documents/download-pdf/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`, `${invoice.invoice_number}.pdf`)}
                     >
                       {t('Share PDF', 'PDF teilen')}
                     </button>
                     <a
-                      href={resolveApiUrl(`/api/documents/download-pdf/${invoice.invoice_number}`)}
+                      href={resolveApiUrl(`/api/documents/download-pdf/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"

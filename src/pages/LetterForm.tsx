@@ -6,7 +6,7 @@ import { Customer } from '../types/api';
 
 const LetterForm: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | ''>('');
   const [subject, setSubject] = useState('');
@@ -39,7 +39,7 @@ const LetterForm: React.FC = () => {
       });
       await generateLetterDocument({
         letter_id: response.data.id,
-      });
+      }, lang);
       navigate('/letters');
     } catch (error) {
       console.error('Error creating letter:', error);

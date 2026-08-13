@@ -6,7 +6,7 @@ import { Customer, OfferItem, Article } from '../types/api';
 
 const OfferForm: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | ''>('');
@@ -129,7 +129,7 @@ const OfferForm: React.FC = () => {
       });
       await generateOfferDocument({
         offer_id: response.data.id,
-      });
+      }, lang);
       navigate('/offers');
     } catch (error) {
       console.error('Error creating offer:', error);

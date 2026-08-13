@@ -7,7 +7,7 @@ import { Offer } from '../types/api';
 
 const OfferList: React.FC = () => {
   const [offers, setOffers] = useState<Offer[]>([]);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   useEffect(() => {
     loadOffers();
@@ -153,7 +153,7 @@ const OfferList: React.FC = () => {
                       </>
                     )}
                     <a
-                      href={resolveApiUrl(`/api/documents/download-offer/${offer.offer_number}`)}
+                      href={resolveApiUrl(`/api/documents/download-offer/${offer.offer_number}?lang=${encodeURIComponent(lang)}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action"
@@ -161,7 +161,7 @@ const OfferList: React.FC = () => {
                       {t('Download Word', 'Word herunterladen')}
                     </a>
                     <a
-                      href={resolveApiUrl(`/api/documents/download-offer-pdf/${offer.offer_number}`)}
+                      href={resolveApiUrl(`/api/documents/download-offer-pdf/${offer.offer_number}?lang=${encodeURIComponent(lang)}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
@@ -171,7 +171,7 @@ const OfferList: React.FC = () => {
                     <button
                       type="button"
                       className="btn btn-secondary btn-small btn-doc-action"
-                      onClick={() => sharePdf(`/api/documents/download-offer-pdf/${offer.offer_number}`, `${offer.offer_number}.pdf`)}
+                      onClick={() => sharePdf(`/api/documents/download-offer-pdf/${offer.offer_number}?lang=${encodeURIComponent(lang)}`, `${offer.offer_number}.pdf`)}
                     >
                       {t('Share', 'Teilen')}
                     </button>

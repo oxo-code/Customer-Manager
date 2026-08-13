@@ -7,7 +7,7 @@ import { Letter } from '../types/api';
 
 const LetterList: React.FC = () => {
   const [letters, setLetters] = useState<Letter[]>([]);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
 
   useEffect(() => {
     loadLetters();
@@ -109,7 +109,7 @@ const LetterList: React.FC = () => {
                   <td>{new Date(letter.date).toLocaleDateString('de-DE')}</td>
                   <td className="button-group">
                     <a
-                      href={resolveApiUrl(`/api/documents/download-letter-pdf/${letter.id}`)}
+                      href={resolveApiUrl(`/api/documents/download-letter-pdf/${letter.id}?lang=${encodeURIComponent(lang)}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small hide-on-mobile"
@@ -119,7 +119,7 @@ const LetterList: React.FC = () => {
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
-                      onClick={() => sharePdf(`/api/documents/download-letter-pdf/${letter.id}`, `brief-${letter.id}.pdf`)}
+                      onClick={() => sharePdf(`/api/documents/download-letter-pdf/${letter.id}?lang=${encodeURIComponent(lang)}`, `brief-${letter.id}.pdf`)}
                     >
                       {t('Share', 'Teilen')}
                     </button>

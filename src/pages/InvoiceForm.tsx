@@ -6,7 +6,7 @@ import { Customer, InvoiceItem, Article } from '../types/api';
 
 const InvoiceForm: React.FC = () => {
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState<number | ''>('');
@@ -123,7 +123,7 @@ const InvoiceForm: React.FC = () => {
       });
       await generateDocument({
         invoice_id: response.data.id,
-      });
+      }, lang);
       navigate('/invoices');
     } catch (error) {
       console.error('Error creating invoice:', error);

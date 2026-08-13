@@ -124,7 +124,8 @@ export const createInvoice = (data: { customer_id: number; date: string; items: 
 export const updateInvoiceStatus = (id: number, status: 'draft' | 'final') => api.patch<Invoice>(`/invoices/${id}/status`, { status });
 export const deleteInvoice = (id: number) => api.delete(`/invoices/${id}`);
 
-export const generateDocument = (data: { invoice_id: number }) => api.post('/documents/generate', data);
+export const generateDocument = (data: { invoice_id: number }, lang?: 'en' | 'de') =>
+  api.post('/documents/generate', data, { params: lang ? { lang } : undefined });
 
 export const getOffers = () => api.get<Offer[]>('/offers');
 export const getOffer = (id: number) => api.get<Offer>(`/offers/${id}`);
@@ -132,13 +133,15 @@ export const createOffer = (data: { customer_id: number; date: string; items: Of
 export const updateOfferStatus = (id: number, status: 'draft' | 'final') => api.patch<Offer>(`/offers/${id}/status`, { status });
 export const deleteOffer = (id: number) => api.delete(`/offers/${id}`);
 
-export const generateOfferDocument = (data: { offer_id: number }) => api.post('/documents/generate-offer', data);
+export const generateOfferDocument = (data: { offer_id: number }, lang?: 'en' | 'de') =>
+  api.post('/documents/generate-offer', data, { params: lang ? { lang } : undefined });
 
 export const getLetters = () => api.get<Letter[]>('/letters');
 export const getLetter = (id: number) => api.get<Letter>(`/letters/${id}`);
 export const createLetter = (data: { customer_id: number; subject: string; content: string; date: string }) => api.post<Letter>('/letters/create', data);
 
-export const generateLetterDocument = (data: { letter_id: number }) => api.post('/documents/generate-letter', data);
+export const generateLetterDocument = (data: { letter_id: number }, lang?: 'en' | 'de') =>
+  api.post('/documents/generate-letter', data, { params: lang ? { lang } : undefined });
 
 export const getArticles = () => api.get<Article[]>('/articles');
 export const getArticle = (id: number) => api.get<Article>(`/articles/${id}`);
