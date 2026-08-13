@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
@@ -29,7 +30,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 Base.metadata.create_all(bind=engine)
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
@@ -67,7 +68,18 @@ def hash_password(password: str) -> str:
 
 
 def verify_password(plain_password: str, password_hash: str) -> bool:
-    return pwd_context.verify(plain_password, password_hash)
+    if not password_hash:
+        return False
+    try:
+        return pwd_context.verify(plain_password, password_hash)
+    except (UnknownHashError, ValueError, TypeError):
+        # Backward compatibility: treat old plaintext records as legacy passwords.
+        if not isinstance(plain_password, str) or not isinstance(password_hash, str):
+            return False
+        return secrets.compare_digest(
+            plain_password.encode("utf-8"),
+            password_hash.encode("utf-8"),
+        )
 
 
 def _utcnow() -> datetime:
@@ -252,6 +264,16 @@ def login(credentials: schemas.AuthCredentials, db: Session = Depends(get_db)):
     user = db.query(models.User).filter(models.User.username == credentials.username.strip()).first()
     if user is None or not verify_password(credentials.password, user.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials.")
+
+    # Migrate old hashes (e.g. PBKDF2/plaintext) to current default bcrypt after successful login.
+    try:
+        if pwd_context.needs_update(user.password_hash):
+            user.password_hash = hash_password(credentials.password)
+            db.commit()
+    except Exception:
+        # Never block a valid login if hash-upgrade fails.
+        db.rollback()
+
     return _build_auth_response(db, user)
 
 
