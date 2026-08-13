@@ -2,9 +2,31 @@ import axios from 'axios';
 import { Article, AuthBootstrap, AuthCreateUserRequest, AuthTokenResponse, AuthUpdateUserRoleRequest, AuthUser, CompanySettings, Customer, Invoice, InvoiceItem, Letter, Offer, OfferItem } from '../types/api';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
+const devBackendOrigin = import.meta.env.VITE_BACKEND_ORIGIN || 'http://127.0.0.1:8001';
 const api = axios.create({
   baseURL: apiBaseUrl,
 });
+
+export const resolveApiUrl = (path: string) => {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+
+  if (/^https?:\/\//i.test(apiBaseUrl)) {
+    const configuredBase = new URL(apiBaseUrl);
+    const basePath = configuredBase.pathname.replace(/\/$/, '');
+    const suffixPath = normalizedPath.startsWith('/api/') ? normalizedPath.slice(4) : normalizedPath;
+    return `${configuredBase.origin}${basePath}${suffixPath}`;
+  }
+
+  if ((window.location.port === '5173' || window.location.port === '4173') && normalizedPath.startsWith('/api/')) {
+    return `${devBackendOrigin}${normalizedPath}`;
+  }
+
+  return normalizedPath;
+};
 
 const AUTH_TOKEN_KEY = 'auth_token';
 const REFRESH_TOKEN_KEY = 'refresh_token';

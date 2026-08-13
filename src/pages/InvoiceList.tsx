@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
+import { resolveApiUrl } from '../services/api';
 import { deleteInvoice, getInvoices, updateInvoiceStatus } from '../services/api';
 import { Invoice } from '../types/api';
 
@@ -43,7 +44,7 @@ const InvoiceList: React.FC = () => {
 
   const sharePdf = async (url: string, filename: string) => {
     const nav = navigator as any;
-    const absoluteUrl = new URL(url, window.location.origin).toString();
+    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
@@ -152,7 +153,7 @@ const InvoiceList: React.FC = () => {
                       </>
                     )}
                     <a
-                      href={`/api/documents/download/${invoice.invoice_number}`}
+                      href={resolveApiUrl(`/api/documents/download/${invoice.invoice_number}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action"
@@ -167,7 +168,7 @@ const InvoiceList: React.FC = () => {
                       {t('Share PDF', 'PDF teilen')}
                     </button>
                     <a
-                      href={`/api/documents/download-pdf/${invoice.invoice_number}`}
+                      href={resolveApiUrl(`/api/documents/download-pdf/${invoice.invoice_number}`)}
                       target="_blank"
                       rel="noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"

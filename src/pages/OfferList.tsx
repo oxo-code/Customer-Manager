@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
+import { resolveApiUrl } from '../services/api';
 import { deleteOffer, getOffers, updateOfferStatus } from '../services/api';
 import { Offer } from '../types/api';
 
@@ -43,7 +44,7 @@ const OfferList: React.FC = () => {
 
   const sharePdf = async (url: string, filename: string) => {
     const nav = navigator as any;
-    const absoluteUrl = new URL(url, window.location.origin).toString();
+    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
@@ -152,7 +153,7 @@ const OfferList: React.FC = () => {
                       </>
                     )}
                     <a
-                      href={`/api/documents/download-offer/${offer.offer_number}`}
+                      href={resolveApiUrl(`/api/documents/download-offer/${offer.offer_number}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action"
@@ -160,7 +161,7 @@ const OfferList: React.FC = () => {
                       {t('Download Word', 'Word herunterladen')}
                     </a>
                     <a
-                      href={`/api/documents/download-offer-pdf/${offer.offer_number}`}
+                      href={resolveApiUrl(`/api/documents/download-offer-pdf/${offer.offer_number}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
+import { resolveApiUrl } from '../services/api';
 import { getLetters } from '../services/api';
 import { Letter } from '../types/api';
 
@@ -14,7 +15,7 @@ const LetterList: React.FC = () => {
 
   const loadLetters = async () => {
     try {
-                      className="btn btn-secondary btn-small btn-doc-action"
+      const response = await getLetters();
       setLetters(response.data.sort((a, b) => b.id - a.id));
     } catch (error) {
       console.error('Error loading letters:', error);
@@ -22,13 +23,13 @@ const LetterList: React.FC = () => {
   };
 
   const sharePdf = async (url: string, filename: string) => {
-                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
-    const absoluteUrl = new URL(url, window.location.origin).toString();
+    const nav = navigator as any;
+    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
       if (nav.share && isIos) {
-                      className="btn btn-secondary btn-small btn-doc-action"
+        await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
       }
 
@@ -108,7 +109,7 @@ const LetterList: React.FC = () => {
                   <td>{new Date(letter.date).toLocaleDateString('de-DE')}</td>
                   <td className="button-group">
                     <a
-                      href={`/api/documents/download-letter-pdf/${letter.id}`}
+                      href={resolveApiUrl(`/api/documents/download-letter-pdf/${letter.id}`)}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn btn-secondary btn-small hide-on-mobile"
