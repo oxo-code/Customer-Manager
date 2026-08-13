@@ -1,6 +1,7 @@
 import hashlib
 import os
 import secrets
+from threading import Lock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal, Optional
@@ -40,6 +41,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 14
 JWT_ALGORITHM = "HS256"
+PDF_CONVERT_LOCK = Lock()
 
 
 def _get_auth_secret() -> str:
@@ -322,6 +324,10 @@ def _first_existing_template(candidates: list[str]) -> Path:
 
 def _prefers_english(lang: Optional[str]) -> bool:
     return isinstance(lang, str) and lang.lower().startswith("en")
+
+
+def _lang_suffix(lang: Optional[str]) -> str:
+    return "eng" if _prefers_english(lang) else "de"
 
 
 def _template_candidates(
@@ -804,9 +810,18 @@ def download_invoice_pdf(invoice_number: str, lang: Optional[str] = None, db: Se
         _template_candidates("invoice_template.docx", "invoice_template_eng.docx", lang)
     )
     safe_number = _sanitize_filename(invoice.invoice_number)
-    docx_path = _render_docx(template, context, f"invoice-{safe_number}.docx")
-    pdf_path = _convert_docx_to_pdf(docx_path)
-    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+    cache_name = f"invoice-{safe_number}-{_lang_suffix(lang)}.pdf"
+    cached_pdf_path = OUTPUT_DIR / cache_name
+
+    if not cached_pdf_path.exists():
+        with PDF_CONVERT_LOCK:
+            if not cached_pdf_path.exists():
+                request_suffix = secrets.token_hex(6)
+                docx_path = _render_docx(template, context, f"invoice-{safe_number}-{request_suffix}.docx")
+                temp_pdf_path = _convert_docx_to_pdf(docx_path)
+                temp_pdf_path.replace(cached_pdf_path)
+
+    return FileResponse(path=str(cached_pdf_path), media_type="application/pdf", filename=f"invoice-{safe_number}.pdf")
 
 
 @app.get("/api/documents/download-offer/{offer_number}")
@@ -841,9 +856,18 @@ def download_offer_pdf(offer_number: str, lang: Optional[str] = None, db: Sessio
         _template_candidates("offer_template.docx", "offer_template_eng.docx", lang)
     )
     safe_number = _sanitize_filename(offer.offer_number)
-    docx_path = _render_docx(template, context, f"offer-{safe_number}.docx")
-    pdf_path = _convert_docx_to_pdf(docx_path)
-    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+    cache_name = f"offer-{safe_number}-{_lang_suffix(lang)}.pdf"
+    cached_pdf_path = OUTPUT_DIR / cache_name
+
+    if not cached_pdf_path.exists():
+        with PDF_CONVERT_LOCK:
+            if not cached_pdf_path.exists():
+                request_suffix = secrets.token_hex(6)
+                docx_path = _render_docx(template, context, f"offer-{safe_number}-{request_suffix}.docx")
+                temp_pdf_path = _convert_docx_to_pdf(docx_path)
+                temp_pdf_path.replace(cached_pdf_path)
+
+    return FileResponse(path=str(cached_pdf_path), media_type="application/pdf", filename=f"offer-{safe_number}.pdf")
 
 
 @app.get("/api/documents/download-letter-pdf/{letter_id}")
@@ -857,9 +881,18 @@ def download_letter_pdf(letter_id: int, lang: Optional[str] = None, db: Session 
     template = _first_existing_template(
         _template_candidates("letter_template.docx", "letter_template_eng.docx", lang, ["briefvorlage.docx"])
     )
-    docx_path = _render_docx(template, context, f"letter-{letter.id}.docx")
-    pdf_path = _convert_docx_to_pdf(docx_path)
-    return FileResponse(path=str(pdf_path), media_type="application/pdf", filename=pdf_path.name)
+    cache_name = f"letter-{letter.id}-{_lang_suffix(lang)}.pdf"
+    cached_pdf_path = OUTPUT_DIR / cache_name
+
+    if not cached_pdf_path.exists():
+        with PDF_CONVERT_LOCK:
+            if not cached_pdf_path.exists():
+                request_suffix = secrets.token_hex(6)
+                docx_path = _render_docx(template, context, f"letter-{letter.id}-{request_suffix}.docx")
+                temp_pdf_path = _convert_docx_to_pdf(docx_path)
+                temp_pdf_path.replace(cached_pdf_path)
+
+    return FileResponse(path=str(cached_pdf_path), media_type="application/pdf", filename=f"letter-{letter.id}.pdf")
 
 
 @app.get("/api/uploads/{filename}")
