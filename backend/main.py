@@ -10,7 +10,8 @@ from fastapi.responses import FileResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from docx2pdf import convert
-from docxtpl import DocxTemplate
+from docx.shared import Mm
+from docxtpl import DocxTemplate, InlineImage
 from passlib.context import CryptContext
 from passlib.exc import UnknownHashError
 from sqlalchemy.orm import Session
@@ -213,15 +214,26 @@ def _company_data(settings: Optional[models.CompanySettings]) -> dict:
 
 def build_invoice_context(invoice: models.Invoice, settings: Optional[models.CompanySettings]) -> dict:
     customer = invoice.customer
+    total_netto = float(sum((item.total_price or 0.0) for item in invoice.items))
+    vat_rate = 0.19
+    total_brutto = total_netto * (1.0 + vat_rate)
+    date_str = invoice.date.strftime("%Y-%m-%d") if invoice.date else ""
+
     return {
         "mandant": _company_data(settings),
+        # Legacy + template-specific customer fields
         "customer_name": customer.name,
+        "firma": customer.firma or "",
+        "adresse": customer.adresse or "",
+        "plz": customer.plz or "",
+        "ort": customer.ort or "",
+        "date": date_str,
         "customer_company": customer.firma,
         "customer_address": customer.adresse,
         "customer_zip": customer.plz,
         "customer_city": customer.ort,
         "invoice_number": invoice.invoice_number,
-        "invoice_date": invoice.date.strftime("%Y-%m-%d") if invoice.date else "",
+        "invoice_date": date_str,
         "items": [
             {
                 "description": item.description,
@@ -232,6 +244,9 @@ def build_invoice_context(invoice: models.Invoice, settings: Optional[models.Com
             for item in invoice.items
         ],
         "total_amount": invoice.total_amount,
+        "total_netto": round(total_netto, 2),
+        "mwst": round(vat_rate * 100, 2),
+        "total_brutto": round(total_brutto, 2),
     }
 
 
@@ -287,7 +302,20 @@ def _first_existing_template(candidates: list[str]) -> Path:
 def _render_docx(template_path: Path, context: dict, output_filename: str) -> Path:
     output_path = OUTPUT_DIR / output_filename
     doc = DocxTemplate(str(template_path))
-    doc.render(context)
+
+    rendered_context = context.copy()
+    mandant = context.get("mandant") if isinstance(context, dict) else None
+    if isinstance(mandant, dict):
+        rendered_mandant = mandant.copy()
+        logo_ref = rendered_mandant.get("logo")
+        if isinstance(logo_ref, str) and logo_ref.startswith("/api/uploads/"):
+            logo_name = _sanitize_filename(Path(logo_ref).name)
+            logo_path = UPLOADS_DIR / logo_name
+            if logo_path.exists() and logo_path.is_file():
+                rendered_mandant["logo"] = InlineImage(doc, str(logo_path), width=Mm(32))
+        rendered_context["mandant"] = rendered_mandant
+
+    doc.render(rendered_context)
     doc.save(str(output_path))
     return output_path
 
