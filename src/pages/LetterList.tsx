@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
-import { resolveApiUrl } from '../services/api';
-import { getLetters } from '../services/api';
+import { getLetters, getSignedDocumentDownloadUrl } from '../services/api';
 import { Letter } from '../types/api';
 
 const LetterList: React.FC = () => {
@@ -22,12 +21,27 @@ const LetterList: React.FC = () => {
     }
   };
 
-  const sharePdf = async (url: string, filename: string) => {
+  const getSignedUrl = async (reference: string) => {
+    return getSignedDocumentDownloadUrl({ kind: 'letter_pdf', reference, lang });
+  };
+
+  const openDownload = async (reference: string) => {
+    try {
+      const absoluteUrl = await getSignedUrl(reference);
+      window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('Download link generation failed', error);
+      alert(t('The download link could not be generated.', 'Der Download-Link konnte nicht erzeugt werden.'));
+    }
+  };
+
+  const sharePdf = async (reference: string, filename: string) => {
     const nav = navigator as any;
-    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
+      const absoluteUrl = await getSignedUrl(reference);
+
       if (nav.share && isIos) {
         await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
@@ -108,18 +122,17 @@ const LetterList: React.FC = () => {
                   <td>{letter.subject}</td>
                   <td>{new Date(letter.date).toLocaleDateString('de-DE')}</td>
                   <td className="button-group">
-                    <a
-                      href={resolveApiUrl(`/api/documents/download-letter-pdf/${letter.id}?lang=${encodeURIComponent(lang)}`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
                       className="btn btn-secondary btn-small hide-on-mobile"
+                      onClick={() => openDownload(String(letter.id))}
                     >
                       {t('Direct link', 'Direktlink')}
-                    </a>
+                    </button>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small"
-                      onClick={() => sharePdf(`/api/documents/download-letter-pdf/${letter.id}?lang=${encodeURIComponent(lang)}`, `brief-${letter.id}.pdf`)}
+                      onClick={() => sharePdf(String(letter.id), `brief-${letter.id}.pdf`)}
                     >
                       {t('Share', 'Teilen')}
                     </button>

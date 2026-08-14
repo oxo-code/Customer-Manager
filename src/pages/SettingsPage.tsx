@@ -5,7 +5,7 @@ import { AuthUser, CompanySettings } from '../types/api';
 
 const emptySettings: Omit<CompanySettings, 'id' | 'logo_path' | 'dark_logo_path' | 'document_logo_path'> = {
   company_name: '', full_name: '', street: '', postal_code: '', city: '', country: '', email: '', phone: '',
-  tax_number: '', vat_id: '', bank_name: '', iban: '', bic: '',
+  tax_number: '', vat_id: '', vat_rate: 19, bank_name: '', iban: '', bic: '',
 };
 
 const emptyNewUser = {
@@ -63,7 +63,17 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   }, [isAdmin, t]);
 
   const change = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setSettings({ ...settings, [event.target.name]: event.target.value });
+    const { name, value } = event.target;
+    if (name === 'vat_rate') {
+      if (value.trim() === '') {
+        setSettings({ ...settings, vat_rate: 0 });
+        return;
+      }
+      const normalized = Number.parseFloat(value.replace(',', '.'));
+      setSettings({ ...settings, vat_rate: Number.isFinite(normalized) ? normalized : 0 });
+      return;
+    }
+    setSettings({ ...settings, [name]: value });
   };
 
   const changeNewUser = (event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
@@ -85,6 +95,10 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     try {
+      if ((settings.vat_rate ?? 0) < 0 || (settings.vat_rate ?? 0) > 100) {
+        setStatus(t('VAT rate must be between 0 and 100.', 'Der Steuersatz muss zwischen 0 und 100 liegen.'));
+        return;
+      }
       await updateCompanySettings(settings);
       setStatus(t('Settings saved.', 'Einstellungen gespeichert.'));
     } catch {
@@ -199,6 +213,7 @@ const SettingsPage: React.FC<SettingsPageProps> = ({ currentUser }) => {
       </div></section>
       <section className="card settings-section"><h2>{t('Tax and bank', 'Steuer und Bank')}</h2><div className="form-grid">
         <div className="form-field"><label>{t('Tax number', 'Steuernummer')}</label><input name="tax_number" value={settings.tax_number || ''} onChange={change} /></div><div className="form-field"><label>{t('VAT ID', 'USt-IdNr.')}</label><input name="vat_id" value={settings.vat_id || ''} onChange={change} /></div>
+        <div className="form-field"><label>{t('VAT rate (%)', 'Steuersatz (%)')}</label><input type="number" min="0" max="100" step="0.01" name="vat_rate" value={settings.vat_rate ?? 19} onChange={change} /></div>
         <div className="form-field"><label>{t('Bank', 'Bank')}</label><input name="bank_name" value={settings.bank_name || ''} onChange={change} /></div><div className="form-field"><label>IBAN</label><input name="iban" value={settings.iban || ''} onChange={change} /></div><div className="form-field"><label>BIC</label><input name="bic" value={settings.bic || ''} onChange={change} /></div>
       </div></section>
       <section className="card settings-section">

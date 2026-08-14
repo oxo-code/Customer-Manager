@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
-import { resolveApiUrl } from '../services/api';
-import { deleteInvoice, getInvoices, updateInvoiceStatus } from '../services/api';
+import { deleteInvoice, getInvoices, getSignedDocumentDownloadUrl, updateInvoiceStatus } from '../services/api';
 import { Invoice } from '../types/api';
 
 const InvoiceList: React.FC = () => {
@@ -42,12 +41,27 @@ const InvoiceList: React.FC = () => {
     }
   };
 
-  const sharePdf = async (url: string, filename: string) => {
+  const getSignedUrl = async (kind: 'invoice_docx' | 'invoice_pdf', reference: string) => {
+    return getSignedDocumentDownloadUrl({ kind, reference, lang });
+  };
+
+  const openDownload = async (kind: 'invoice_docx' | 'invoice_pdf', reference: string) => {
+    try {
+      const absoluteUrl = await getSignedUrl(kind, reference);
+      window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('Download link generation failed', error);
+      alert(t('The download link could not be generated.', 'Der Download-Link konnte nicht erzeugt werden.'));
+    }
+  };
+
+  const sharePdf = async (reference: string, filename: string) => {
     const nav = navigator as any;
-    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
+      const absoluteUrl = await getSignedUrl('invoice_pdf', reference);
+
       if (nav.share && isIos) {
         await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
@@ -152,29 +166,27 @@ const InvoiceList: React.FC = () => {
                         </button>
                       </>
                     )}
-                    <a
-                      href={resolveApiUrl(`/api/documents/download/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="btn btn-secondary btn-small btn-doc-action"
-                    >
-                      {t('Download Word', 'Word herunterladen')}
-                    </a>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small btn-doc-action"
-                      onClick={() => sharePdf(`/api/documents/download-pdf/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`, `${invoice.invoice_number}.pdf`)}
+                      onClick={() => openDownload('invoice_docx', invoice.invoice_number)}
+                    >
+                      {t('Download Word', 'Word herunterladen')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small btn-doc-action"
+                      onClick={() => sharePdf(invoice.invoice_number, `${invoice.invoice_number}.pdf`)}
                     >
                       {t('Share PDF', 'PDF teilen')}
                     </button>
-                    <a
-                      href={resolveApiUrl(`/api/documents/download-pdf/${invoice.invoice_number}?lang=${encodeURIComponent(lang)}`)}
-                      target="_blank"
-                      rel="noreferrer"
+                    <button
+                      type="button"
                       className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
+                      onClick={() => openDownload('invoice_pdf', invoice.invoice_number)}
                     >
                       {t('PDF direct link', 'PDF Direktlink')}
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}

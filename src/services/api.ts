@@ -2,7 +2,7 @@ import axios from 'axios';
 import { Article, AuthBootstrap, AuthCreateUserRequest, AuthTokenResponse, AuthUpdateUserRoleRequest, AuthUser, CompanySettings, Customer, Invoice, InvoiceItem, Letter, Offer, OfferItem } from '../types/api';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api';
-const devBackendOrigin = import.meta.env.VITE_BACKEND_ORIGIN || 'http://127.0.0.1:8001';
+const devBackendOrigin = import.meta.env.VITE_BACKEND_ORIGIN || 'https://127.0.0.1:8001';
 const api = axios.create({
   baseURL: apiBaseUrl,
 });
@@ -142,6 +142,13 @@ export const createLetter = (data: { customer_id: number; subject: string; conte
 
 export const generateLetterDocument = (data: { letter_id: number }, lang?: 'en' | 'de') =>
   api.post('/documents/generate-letter', data, { params: lang ? { lang } : undefined });
+
+type DocumentDownloadKind = 'invoice_docx' | 'invoice_pdf' | 'offer_docx' | 'offer_pdf' | 'letter_pdf';
+
+export const getSignedDocumentDownloadUrl = async (payload: { kind: DocumentDownloadKind; reference: string; lang?: string }) => {
+  const { data } = await api.post<{ url: string }>('/documents/download-link', payload);
+  return resolveApiUrl(data.url);
+};
 
 export const getArticles = () => api.get<Article[]>('/articles');
 export const getArticle = (id: number) => api.get<Article>(`/articles/${id}`);

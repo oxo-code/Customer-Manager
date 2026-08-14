@@ -62,6 +62,10 @@ class DocumentGenerationContextTest(unittest.TestCase):
         self.assertEqual(context['mandant']['logo'], '/api/uploads/company-logo.svg')
         self.assertEqual(context['customer_name'], 'Max Mustermann')
         self.assertEqual(context['invoice_number'], '2026-001')
+        self.assertEqual(context['total_netto'], 100.0)
+        self.assertEqual(context['mwst'], 19.0)
+        self.assertEqual(context['mwst_satz'], 19.0)
+        self.assertEqual(context['total_brutto'], 119.0)
 
     def test_status_can_be_advanced_to_final_and_draft_can_be_deleted(self):
         engine = create_engine('sqlite:///:memory:')

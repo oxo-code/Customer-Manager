@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 class CustomerBase(BaseModel):
     name: str
@@ -140,6 +140,7 @@ class CompanySettingsBase(BaseModel):
     phone: Optional[str] = None
     tax_number: Optional[str] = None
     vat_id: Optional[str] = None
+    vat_rate: float = 19.0
     bank_name: Optional[str] = None
     iban: Optional[str] = None
     bic: Optional[str] = None
@@ -194,3 +195,14 @@ class AuthRefreshRequest(BaseModel):
 
 class AuthUpdateUserRole(BaseModel):
     role: str
+
+
+class DocumentDownloadLinkRequest(BaseModel):
+    kind: Literal["invoice_docx", "invoice_pdf", "offer_docx", "offer_pdf", "letter_pdf"]
+    reference: str
+    lang: Optional[str] = None
+
+
+class DocumentDownloadLinkResponse(BaseModel):
+    url: str
+    expires_at: int

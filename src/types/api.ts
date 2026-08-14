@@ -81,6 +81,7 @@ export interface CompanySettings {
   phone?: string;
   tax_number?: string;
   vat_id?: string;
+  vat_rate?: number;
   bank_name?: string;
   iban?: string;
   bic?: string;

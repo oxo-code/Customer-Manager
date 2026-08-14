@@ -1,10 +1,14 @@
+import asyncio
 import hashlib
+import hmac
 import os
 import secrets
+import sys
 from threading import Lock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Literal, Optional
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
@@ -19,6 +23,10 @@ from sqlalchemy.orm import Session
 
 from . import crud, models, schemas
 from .database import Base, engine, get_db
+
+if sys.platform == "win32":
+    # Avoid noisy Proactor shutdown tracebacks on abrupt client disconnects.
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -35,6 +43,17 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 Base.metadata.create_all(bind=engine)
 
+
+def _ensure_company_settings_columns() -> None:
+    # Lightweight SQLite migration for existing installs.
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(company_settings)")}
+        if "vat_rate" not in columns:
+            conn.exec_driver_sql("ALTER TABLE company_settings ADD COLUMN vat_rate FLOAT DEFAULT 19.0")
+
+
+_ensure_company_settings_columns()
+
 pwd_context = CryptContext(schemes=["bcrypt", "pbkdf2_sha256"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -42,6 +61,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 14
 JWT_ALGORITHM = "HS256"
 PDF_CONVERT_LOCK = Lock()
+DOWNLOAD_TOKEN_TTL_SECONDS = 600
 
 
 def _get_auth_secret() -> str:
@@ -102,6 +122,35 @@ def _create_token(payload: dict, expires_delta: timedelta) -> str:
     to_encode = payload.copy()
     to_encode["exp"] = _utcnow() + expires_delta
     return jwt.encode(to_encode, AUTH_SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def _download_signature(kind: str, reference: str, lang: Optional[str], expires_at: int) -> str:
+    payload = f"{kind}|{reference}|{lang or ''}|{expires_at}"
+    return hmac.new(AUTH_SECRET_KEY.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def _create_download_token(kind: str, reference: str, lang: Optional[str]) -> tuple[str, int]:
+    expires_at = int((_utcnow() + timedelta(seconds=DOWNLOAD_TOKEN_TTL_SECONDS)).timestamp())
+    signature = _download_signature(kind, reference, lang, expires_at)
+    return f"{expires_at}.{signature}", expires_at
+
+
+def _verify_download_token(kind: str, reference: str, lang: Optional[str], token: str) -> None:
+    if not token or "." not in token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid download token.")
+
+    expires_raw, provided_signature = token.split(".", 1)
+    try:
+        expires_at = int(expires_raw)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid download token.") from exc
+
+    if expires_at < int(_utcnow().timestamp()):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Download token expired.")
+
+    expected_signature = _download_signature(kind, reference, lang, expires_at)
+    if not secrets.compare_digest(provided_signature, expected_signature):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid download token.")
 
 
 def _create_access_token(user: models.User) -> str:
@@ -244,8 +293,10 @@ def build_invoice_context(invoice: models.Invoice, settings: Optional[models.Com
     }
 
     total_netto = float(sum((item.total_price or 0.0) for item in invoice.items))
-    vat_rate = 0.19
-    total_brutto = total_netto * (1.0 + vat_rate)
+    vat_rate_percent = float(getattr(settings, "vat_rate", 19.0) if settings is not None else 19.0)
+    vat_rate = vat_rate_percent / 100.0
+    vat_amount = total_netto * vat_rate
+    total_brutto = total_netto + vat_amount
     date_str = invoice.date.strftime("%Y-%m-%d") if invoice.date else ""
 
     return {
@@ -268,13 +319,21 @@ def build_invoice_context(invoice: models.Invoice, settings: Optional[models.Com
         "item": fallback_item,
         "total_amount": invoice.total_amount,
         "total_netto": round(total_netto, 2),
-        "mwst": round(vat_rate * 100, 2),
+        "mwst": round(vat_amount, 2),
+        "mwst_satz": round(vat_rate_percent, 2),
+        "vat_rate": round(vat_rate_percent, 2),
+        "vat_amount": round(vat_amount, 2),
         "total_brutto": round(total_brutto, 2),
     }
 
 
 def build_offer_context(offer: models.Offer, settings: Optional[models.CompanySettings]) -> dict:
     customer = offer.customer
+    total_netto = float(sum((item.total_price or 0.0) for item in offer.items))
+    vat_rate_percent = float(getattr(settings, "vat_rate", 19.0) if settings is not None else 19.0)
+    vat_rate = vat_rate_percent / 100.0
+    vat_amount = total_netto * vat_rate
+    total_brutto = total_netto + vat_amount
     return {
         "mandant": _company_data(settings),
         "customer_name": customer.name,
@@ -295,6 +354,12 @@ def build_offer_context(offer: models.Offer, settings: Optional[models.CompanySe
             for item in offer.items
         ],
         "total_amount": offer.total_amount,
+        "total_netto": round(total_netto, 2),
+        "mwst": round(vat_amount, 2),
+        "mwst_satz": round(vat_rate_percent, 2),
+        "vat_rate": round(vat_rate_percent, 2),
+        "vat_amount": round(vat_amount, 2),
+        "total_brutto": round(total_brutto, 2),
     }
 
 
@@ -778,8 +843,60 @@ def generate_letter_document(
     )
 
 
+@app.post("/api/documents/download-link", response_model=schemas.DocumentDownloadLinkResponse)
+def create_document_download_link(
+    payload: schemas.DocumentDownloadLinkRequest,
+    _: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    kind = payload.kind
+    lang = payload.lang
+
+    if kind == "invoice_docx":
+        invoice = crud.get_invoice_by_number(db, payload.reference)
+        if invoice is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+        reference = invoice.invoice_number
+        route = f"/api/documents/download/{quote(reference, safe='')}"
+    elif kind == "invoice_pdf":
+        invoice = crud.get_invoice_by_number(db, payload.reference)
+        if invoice is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
+        reference = invoice.invoice_number
+        route = f"/api/documents/download-pdf/{quote(reference, safe='')}"
+    elif kind == "offer_docx":
+        offer = crud.get_offer_by_number(db, payload.reference)
+        if offer is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
+        reference = offer.offer_number
+        route = f"/api/documents/download-offer/{quote(reference, safe='')}"
+    elif kind == "offer_pdf":
+        offer = crud.get_offer_by_number(db, payload.reference)
+        if offer is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
+        reference = offer.offer_number
+        route = f"/api/documents/download-offer-pdf/{quote(reference, safe='')}"
+    else:
+        try:
+            letter_id = int(payload.reference)
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid letter reference.") from exc
+        letter = crud.get_letter(db, letter_id)
+        if letter is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Letter not found.")
+        reference = str(letter.id)
+        route = f"/api/documents/download-letter-pdf/{letter.id}"
+
+    token, expires_at = _create_download_token(kind, reference, lang)
+    query = f"token={token}"
+    if lang:
+        query += f"&lang={quote(lang, safe='')}"
+    return schemas.DocumentDownloadLinkResponse(url=f"{route}?{query}", expires_at=expires_at)
+
+
 @app.get("/api/documents/download/{invoice_number}")
-def download_invoice_docx(invoice_number: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+def download_invoice_docx(invoice_number: str, token: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+    _verify_download_token("invoice_docx", invoice_number, lang, token)
     invoice = crud.get_invoice_by_number(db, invoice_number)
     if invoice is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
@@ -799,7 +916,8 @@ def download_invoice_docx(invoice_number: str, lang: Optional[str] = None, db: S
 
 
 @app.get("/api/documents/download-pdf/{invoice_number}")
-def download_invoice_pdf(invoice_number: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+def download_invoice_pdf(invoice_number: str, token: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+    _verify_download_token("invoice_pdf", invoice_number, lang, token)
     invoice = crud.get_invoice_by_number(db, invoice_number)
     if invoice is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found.")
@@ -825,7 +943,8 @@ def download_invoice_pdf(invoice_number: str, lang: Optional[str] = None, db: Se
 
 
 @app.get("/api/documents/download-offer/{offer_number}")
-def download_offer_docx(offer_number: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+def download_offer_docx(offer_number: str, token: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+    _verify_download_token("offer_docx", offer_number, lang, token)
     offer = crud.get_offer_by_number(db, offer_number)
     if offer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
@@ -845,7 +964,8 @@ def download_offer_docx(offer_number: str, lang: Optional[str] = None, db: Sessi
 
 
 @app.get("/api/documents/download-offer-pdf/{offer_number}")
-def download_offer_pdf(offer_number: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+def download_offer_pdf(offer_number: str, token: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+    _verify_download_token("offer_pdf", offer_number, lang, token)
     offer = crud.get_offer_by_number(db, offer_number)
     if offer is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Offer not found.")
@@ -871,7 +991,8 @@ def download_offer_pdf(offer_number: str, lang: Optional[str] = None, db: Sessio
 
 
 @app.get("/api/documents/download-letter-pdf/{letter_id}")
-def download_letter_pdf(letter_id: int, lang: Optional[str] = None, db: Session = Depends(get_db)):
+def download_letter_pdf(letter_id: int, token: str, lang: Optional[str] = None, db: Session = Depends(get_db)):
+    _verify_download_token("letter_pdf", str(letter_id), lang, token)
     letter = crud.get_letter(db, letter_id)
     if letter is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Letter not found.")

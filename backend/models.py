@@ -112,6 +112,7 @@ class CompanySettings(Base):
     phone = Column(String, nullable=True)
     tax_number = Column(String, nullable=True)
     vat_id = Column(String, nullable=True)
+    vat_rate = Column(Float, default=19.0)
     bank_name = Column(String, nullable=True)
     iban = Column(String, nullable=True)
     bic = Column(String, nullable=True)

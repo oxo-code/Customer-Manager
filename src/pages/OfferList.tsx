@@ -1,8 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useLanguage } from '../i18n';
-import { resolveApiUrl } from '../services/api';
-import { deleteOffer, getOffers, updateOfferStatus } from '../services/api';
+import { deleteOffer, getOffers, getSignedDocumentDownloadUrl, updateOfferStatus } from '../services/api';
 import { Offer } from '../types/api';
 
 const OfferList: React.FC = () => {
@@ -42,12 +41,27 @@ const OfferList: React.FC = () => {
     }
   };
 
-  const sharePdf = async (url: string, filename: string) => {
+  const getSignedUrl = async (kind: 'offer_docx' | 'offer_pdf', reference: string) => {
+    return getSignedDocumentDownloadUrl({ kind, reference, lang });
+  };
+
+  const openDownload = async (kind: 'offer_docx' | 'offer_pdf', reference: string) => {
+    try {
+      const absoluteUrl = await getSignedUrl(kind, reference);
+      window.open(absoluteUrl, '_blank', 'noopener,noreferrer');
+    } catch (error) {
+      console.error('Download link generation failed', error);
+      alert(t('The download link could not be generated.', 'Der Download-Link konnte nicht erzeugt werden.'));
+    }
+  };
+
+  const sharePdf = async (reference: string, filename: string) => {
     const nav = navigator as any;
-    const absoluteUrl = resolveApiUrl(url);
     const isIos = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
     try {
+      const absoluteUrl = await getSignedUrl('offer_pdf', reference);
+
       if (nav.share && isIos) {
         await nav.share({ url: absoluteUrl, title: filename, text: t('Share PDF', 'PDF teilen') });
         return;
@@ -152,26 +166,24 @@ const OfferList: React.FC = () => {
                         </button>
                       </>
                     )}
-                    <a
-                      href={resolveApiUrl(`/api/documents/download-offer/${offer.offer_number}?lang=${encodeURIComponent(lang)}`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary btn-small btn-doc-action"
-                    >
-                      {t('Download Word', 'Word herunterladen')}
-                    </a>
-                    <a
-                      href={resolveApiUrl(`/api/documents/download-offer-pdf/${offer.offer_number}?lang=${encodeURIComponent(lang)}`)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
-                    >
-                      {t('Direct link', 'Direktlink')}
-                    </a>
                     <button
                       type="button"
                       className="btn btn-secondary btn-small btn-doc-action"
-                      onClick={() => sharePdf(`/api/documents/download-offer-pdf/${offer.offer_number}?lang=${encodeURIComponent(lang)}`, `${offer.offer_number}.pdf`)}
+                      onClick={() => openDownload('offer_docx', offer.offer_number)}
+                    >
+                      {t('Download Word', 'Word herunterladen')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small btn-doc-action hide-on-mobile"
+                      onClick={() => openDownload('offer_pdf', offer.offer_number)}
+                    >
+                      {t('Direct link', 'Direktlink')}
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-small btn-doc-action"
+                      onClick={() => sharePdf(offer.offer_number, `${offer.offer_number}.pdf`)}
                     >
                       {t('Share', 'Teilen')}
                     </button>
